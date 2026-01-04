@@ -7,6 +7,7 @@ use tracing_subscriber::FmtSubscriber;
 
 mod advanced_analytics;
 mod analysis;
+mod analyzer;
 mod backup;
 mod claude_code_parser;
 mod comprehensive_analyzer;

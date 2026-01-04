@@ -53,7 +53,7 @@ impl ConversationAnalyzer {
 
     pub fn analyze(&self) -> Result<ConversationStats> {
         info!("Analyzing conversations...");
-        
+
         let mut stats = ConversationStats {
             total_conversations: 0,
             total_messages: 0,
@@ -63,7 +63,7 @@ impl ConversationAnalyzer {
 
         // Analyze Cline tasks
         self.analyze_cline_tasks(&mut stats)?;
-        
+
         // Analyze Claude Code history
         self.analyze_claude_history(&mut stats)?;
 
@@ -150,10 +150,7 @@ impl ConversationAnalyzer {
 
         // If no token count, estimate (rough: 4 chars per token)
         if tokens == 0 {
-            let char_count: usize = messages
-                .iter()
-                .map(|m| m.content.to_string().len())
-                .sum();
+            let char_count: usize = messages.iter().map(|m| m.content.to_string().len()).sum();
             tokens = (char_count / 4) as u64;
         }
 
@@ -161,13 +158,16 @@ impl ConversationAnalyzer {
         stats.total_messages += messages.len();
         stats.total_tokens_estimate += tokens;
 
-        let tool_stats = stats.by_tool.entry(tool_name.to_string()).or_insert(ToolStats {
-            conversations: 0,
-            messages: 0,
-            user_messages: 0,
-            assistant_messages: 0,
-            tokens: 0,
-        });
+        let tool_stats = stats
+            .by_tool
+            .entry(tool_name.to_string())
+            .or_insert(ToolStats {
+                conversations: 0,
+                messages: 0,
+                user_messages: 0,
+                assistant_messages: 0,
+                tokens: 0,
+            });
 
         tool_stats.conversations += 1;
         tool_stats.messages += messages.len();
@@ -189,16 +189,19 @@ impl ConversationAnalyzer {
 
         // Claude Code history is event-based, estimate conversations
         let conversations_est = lines.len() / 10; // rough estimate
-        
+
         stats.total_conversations += conversations_est;
 
-        let tool_stats = stats.by_tool.entry("Claude Code".to_string()).or_insert(ToolStats {
-            conversations: 0,
-            messages: 0,
-            user_messages: 0,
-            assistant_messages: 0,
-            tokens: 0,
-        });
+        let tool_stats = stats
+            .by_tool
+            .entry("Claude Code".to_string())
+            .or_insert(ToolStats {
+                conversations: 0,
+                messages: 0,
+                user_messages: 0,
+                assistant_messages: 0,
+                tokens: 0,
+            });
 
         tool_stats.conversations += conversations_est;
 
