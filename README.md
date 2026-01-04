@@ -1,4 +1,5 @@
 # vibedev
+## `cargo install vibedev`
 
 Analyze your AI coding assistant usage patterns, costs, and productivity.
 
