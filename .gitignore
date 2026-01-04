@@ -1,0 +1,31 @@
+# Build
+/target/
+Cargo.lock
+
+# Editor
+*.swp
+*.swo
+*.bak
+*~
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs and temp files
+*.log
+*.tmp
+/tmp/
+
+# Model cache (large files)
+/models/
+*.safetensors
+*.bin
+*.gguf
+
+# Test outputs
+/test-output/
+*.html.bak

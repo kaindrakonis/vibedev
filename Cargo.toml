@@ -1,0 +1,93 @@
+[package]
+name = "vibecheck"
+version = "0.1.0"
+edition = "2021"
+description = "Analyze AI coding assistant usage patterns, costs, and productivity"
+license = "MIT"
+repository = "https://github.com/openSVM/vibecheck"
+homepage = "https://github.com/openSVM/vibecheck"
+documentation = "https://github.com/openSVM/vibecheck#readme"
+readme = "README.md"
+keywords = ["ai", "coding", "analytics", "claude", "cursor"]
+categories = ["command-line-utilities", "development-tools"]
+authors = ["Rin Fhenzig <rin@opensvm.com>"]
+rust-version = "1.70"
+
+[dependencies]
+# Core
+clap = { version = "4.5", features = ["derive", "cargo"] }
+anyhow = "1.0"
+thiserror = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Async
+tokio = { version = "1.40", features = ["full"] }
+rayon = "1.10"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+limcode = "0.1"  # Ultra-fast SIMD binary serialization
+
+# File handling
+walkdir = "2.5"
+glob = "0.3"
+ignore = "0.4"
+
+# Parsing
+regex = "1.10"
+chrono = { version = "0.4", features = ["serde"] }
+lazy_static = "1.5"
+dirs = "5.0"
+
+# Statistics
+statistical = "1.0"
+
+# Output
+comfy-table = "7.1"
+indicatif = "0.17"
+colored = "2.1"
+
+# TUI (like dust)
+ratatui = "0.29"
+crossterm = "0.28"
+
+# LLM integration (Ollama, OpenAI, Anthropic)
+reqwest = { version = "0.12", features = ["json"] }
+futures = "0.3"
+
+# Embedded LLM with optional GPU + Quantization support
+candle-core = "0.8"
+candle-nn = "0.8"
+candle-transformers = "0.8"
+tokenizers = "0.20"
+hf-hub = "0.4"
+
+# Compression & Archiving
+flate2 = "1.0"
+tar = "0.4"
+zip = "0.6"
+
+# SQLite for Cursor database parsing (bundled = includes SQLite statically)
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# Visualization
+plotters = "0.3"
+image = "0.25"
+imageproc = "0.25"
+rusttype = "0.9"
+open = "5.0"
+
+[features]
+default = []
+cuda = ["candle-core/cuda", "candle-nn/cuda", "candle-transformers/cuda"]
+metal = ["candle-core/metal", "candle-nn/metal", "candle-transformers/metal"]
+
+[dev-dependencies]
+tempfile = "3.12"
+criterion = "0.5"
+
+[[bin]]
+name = "vibecheck"
+path = "src/main.rs"
