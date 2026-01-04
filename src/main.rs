@@ -22,6 +22,7 @@ mod viral_insights;
 mod work_hours_analyzer;
 // mod infographics;  // Temporarily disabled due to compilation errors
 mod cache;
+mod claude_config;
 mod daemon;
 mod dataset_extractor;
 mod deep_insights;
@@ -288,6 +289,36 @@ enum Commands {
         /// Precision (auto, f32, f16, bf16)
         #[arg(long, default_value = "auto")]
         precision: String,
+    },
+
+    /// Manage Claude Code provider configuration
+    Claude {
+        /// Action: list, show, set
+        #[arg(default_value = "show")]
+        action: String,
+
+        /// Provider name (z.ai, openrouter, chatgpt, litellm, custom)
+        provider: Option<String>,
+
+        /// API key for the provider
+        #[arg(short, long)]
+        api_key: Option<String>,
+
+        /// Custom endpoint URL (for custom provider)
+        #[arg(short, long)]
+        endpoint: Option<String>,
+
+        /// Model name (optional, uses provider default if not specified)
+        #[arg(short, long)]
+        model: Option<String>,
+
+        /// Organization ID (optional, for some providers)
+        #[arg(short, long)]
+        organization_id: Option<String>,
+
+        /// Apply configuration to Claude Code's config files
+        #[arg(long)]
+        apply: bool,
     },
 }
 
@@ -1423,6 +1454,105 @@ async fn main() -> Result<()> {
                     println!("  start    - Start the daemon");
                     println!("  stop     - Stop the daemon");
                     println!("  restart  - Restart the daemon");
+                }
+            }
+
+            Ok(())
+        }
+
+        Commands::Claude {
+            action,
+            provider,
+            api_key,
+            endpoint,
+            model,
+            organization_id,
+            apply,
+        } => {
+            use colored::Colorize;
+
+            match action.as_str() {
+                "list" => {
+                    claude_config::list_providers();
+                }
+
+                "show" | "status" => {
+                    claude_config::show_current_config()?;
+                }
+
+                "set" => {
+                    let provider_name = provider.ok_or_else(|| {
+                        anyhow::anyhow!("Please specify a provider. Run 'vibedev claude list' to see available providers.")
+                    })?;
+
+                    let key = api_key.ok_or_else(|| {
+                        anyhow::anyhow!("Please provide an API key using --api-key")
+                    })?;
+
+                    // Parse provider
+                    let provider_enum = claude_config::ClaudeProvider::from_str(&provider_name)?;
+
+                    // Create configuration
+                    let mut config = if provider_enum == claude_config::ClaudeProvider::Custom {
+                        let custom_endpoint = endpoint.ok_or_else(|| {
+                            anyhow::anyhow!("Custom provider requires --endpoint")
+                        })?;
+                        let custom_model = model.ok_or_else(|| {
+                            anyhow::anyhow!("Custom provider requires --model")
+                        })?;
+                        claude_config::ClaudeConfig::custom(custom_endpoint, key, custom_model)
+                    } else {
+                        let mut cfg = claude_config::ClaudeConfig::new(provider_enum.clone(), key);
+                        
+                        // Override with custom values if provided
+                        if let Some(custom_endpoint) = endpoint {
+                            cfg.endpoint = custom_endpoint;
+                        }
+                        if let Some(custom_model) = model {
+                            cfg.model = custom_model;
+                        }
+                        cfg
+                    };
+
+                    // Set organization ID if provided
+                    if let Some(org_id) = organization_id {
+                        config.organization_id = Some(org_id);
+                    }
+
+                    // Save configuration
+                    config.save()?;
+                    println!("{} Configuration saved!", "Success:".green().bold());
+                    println!();
+                    println!("  Provider: {}", config.provider.name().green());
+                    println!("  Endpoint: {}", config.endpoint);
+                    println!("  Model: {}", config.model);
+                    println!();
+
+                    // Apply to Claude Code config files if requested
+                    if apply {
+                        println!("Applying configuration to Claude Code...");
+                        config.write_claude_code_config()?;
+                        println!();
+                        println!("{} Claude Code configuration updated!", "Success:".green().bold());
+                        println!("Restart Claude Code for changes to take effect.");
+                    } else {
+                        println!("Use --apply flag to write configuration to Claude Code's config files.");
+                    }
+                }
+
+                _ => {
+                    println!("{}: Unknown action '{}'\n", "Error".red().bold(), action);
+                    println!("Available actions:");
+                    println!("  list     - List all supported providers");
+                    println!("  show     - Show current configuration");
+                    println!("  set      - Set provider configuration");
+                    println!();
+                    println!("Examples:");
+                    println!("  vibedev claude list");
+                    println!("  vibedev claude show");
+                    println!("  vibedev claude set z.ai --api-key sk-xxx --apply");
+                    println!("  vibedev claude set openrouter --api-key sk-or-xxx --apply");
+                    println!("  vibedev claude set custom --endpoint https://api.example.com --model gpt-4 --api-key xxx");
                 }
             }
 
