@@ -14,6 +14,7 @@ pub struct LlmChat {
 }
 
 impl LlmChat {
+    #[allow(dead_code)]
     pub fn new(model: Option<String>) -> Self {
         Self {
             llm: None,

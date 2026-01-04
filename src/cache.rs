@@ -1,4 +1,6 @@
 // Binary cache module using serde_json for serialization
+#![allow(dead_code)]
+
 use anyhow::Result;
 use serde::{de::DeserializeOwned, Serialize};
 use std::fs;

@@ -98,6 +98,7 @@ pub fn get_dtype(quant: Quantization, device: &Device) -> DType {
 }
 
 /// Get device info string
+#[allow(dead_code)]
 pub fn device_info() -> String {
     let device_type = detect_device();
     match device_type {
@@ -306,6 +307,7 @@ pub struct EmbeddedLlm {
 
 impl EmbeddedLlm {
     /// Initialize with a specific model
+    #[allow(dead_code)]
     pub fn new(model_id: Option<&str>) -> Result<Self> {
         Self::new_with_options(model_id, None, None)
     }
