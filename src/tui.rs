@@ -1,4 +1,4 @@
-// TUI module - Interactive terminal UI with rich insights
+// TUI module - Real-time monitoring dashboard (like btop)
 use crate::analyzer::ConversationAnalyzer;
 use crate::claude_code_parser::ClaudeCodeParser;
 use crate::discovery::LogDiscovery;
@@ -17,64 +17,102 @@ use ratatui::{
     symbols,
     text::{Line, Span},
     widgets::{
-        Bar, BarChart, BarGroup, Block, Borders, List, ListItem, Paragraph, Row, Sparkline, Table,
-        Tabs, Wrap,
+        Block, Borders, Gauge, Paragraph, Row, Sparkline, Table, Tabs, Wrap,
     },
     Frame, Terminal,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::io;
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-/// Rich app state with insights data
+const UPDATE_INTERVAL_MS: u64 = 1000; // 1 second updates
+const HISTORY_SIZE: usize = 60; // Keep 60 seconds of history
+
+/// Real-time metrics tracker
+#[derive(Debug, Clone)]
+pub struct MetricsHistory {
+    pub timestamps: VecDeque<u64>,
+    pub storage: VecDeque<u64>,
+    pub conversations: VecDeque<usize>,
+    pub messages: VecDeque<usize>,
+    pub tokens: VecDeque<u64>,
+    pub cost: VecDeque<f64>,
+    pub files: VecDeque<usize>,
+    pub active_sessions: VecDeque<usize>,
+}
+
+impl MetricsHistory {
+    fn new() -> Self {
+        Self {
+            timestamps: VecDeque::with_capacity(HISTORY_SIZE),
+            storage: VecDeque::with_capacity(HISTORY_SIZE),
+            conversations: VecDeque::with_capacity(HISTORY_SIZE),
+            messages: VecDeque::with_capacity(HISTORY_SIZE),
+            tokens: VecDeque::with_capacity(HISTORY_SIZE),
+            cost: VecDeque::with_capacity(HISTORY_SIZE),
+            files: VecDeque::with_capacity(HISTORY_SIZE),
+            active_sessions: VecDeque::with_capacity(HISTORY_SIZE),
+        }
+    }
+
+    fn push(&mut self, snapshot: MetricsSnapshot) {
+        if self.timestamps.len() >= HISTORY_SIZE {
+            self.timestamps.pop_front();
+            self.storage.pop_front();
+            self.conversations.pop_front();
+            self.messages.pop_front();
+            self.tokens.pop_front();
+            self.cost.pop_front();
+            self.files.pop_front();
+            self.active_sessions.pop_front();
+        }
+
+        self.timestamps.push_back(snapshot.timestamp);
+        self.storage.push_back(snapshot.storage);
+        self.conversations.push_back(snapshot.conversations);
+        self.messages.push_back(snapshot.messages);
+        self.tokens.push_back(snapshot.tokens);
+        self.cost.push_back(snapshot.cost);
+        self.files.push_back(snapshot.files);
+        self.active_sessions.push_back(snapshot.active_sessions);
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MetricsSnapshot {
+    pub timestamp: u64,
+    pub storage: u64,
+    pub conversations: usize,
+    pub messages: usize,
+    pub tokens: u64,
+    pub cost: f64,
+    pub files: usize,
+    pub active_sessions: usize,
+}
+
+/// Real-time monitoring app
 pub struct App {
     pub findings: Option<DiscoveryFindings>,
     pub insights: Option<ViralInsights>,
-    pub conversation_stats: Option<ConversationStats>,
-    pub scan_progress: f64,
-    pub scanning: bool,
-    pub selected_tab: usize,
-    pub selected_row: usize,
-    pub scroll_offset: usize,
     pub base_dir: PathBuf,
     pub status_message: String,
-    pub start_time: Instant,
     pub tool_sizes: HashMap<String, u64>,
     pub estimated_tokens: u64,
     pub estimated_cost: f64,
     pub total_conversations: usize,
     pub total_messages: usize,
-    pub projects: HashMap<String, usize>,
-    pub hourly_activity: [u64; 24],
-    pub daily_activity: [u64; 7],
+    pub total_files: usize,
+    pub active_sessions: usize,
+    pub history: MetricsHistory,
+    pub last_update: Instant,
+    pub update_count: u64,
+    pub paused: bool,
+    pub selected_tab: usize,
     pub achievements_unlocked: usize,
-    pub recommendations: Vec<Recommendation>,
-}
-
-#[derive(Debug, Clone)]
-pub struct ConversationStats {
-    pub total_conversations: usize,
-    pub total_messages: usize,
-    pub user_messages: usize,
-    pub assistant_messages: usize,
-    pub avg_messages_per_conv: f64,
-    pub projects: HashMap<String, usize>,
-}
-
-#[derive(Debug, Clone)]
-pub struct Recommendation {
-    pub priority: Priority,
-    pub title: String,
-    pub description: String,
-    pub savings: Option<String>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Priority {
-    High,
-    Medium,
-    Low,
+    pub hourly_activity: [u64; 24],
+    pub start_time: Instant,
+    pub uptime: Duration,
 }
 
 impl App {
@@ -82,40 +120,43 @@ impl App {
         Self {
             findings: None,
             insights: None,
-            conversation_stats: None,
-            scan_progress: 0.0,
-            scanning: false,
-            selected_tab: 0,
-            selected_row: 0,
-            scroll_offset: 0,
             base_dir,
-            status_message: "Loading... Press 'q' to quit".to_string(),
-            start_time: Instant::now(),
+            status_message: "Starting real-time monitoring...".to_string(),
             tool_sizes: HashMap::new(),
             estimated_tokens: 0,
             estimated_cost: 0.0,
             total_conversations: 0,
             total_messages: 0,
-            projects: HashMap::new(),
-            hourly_activity: [0; 24],
-            daily_activity: [0; 7],
+            total_files: 0,
+            active_sessions: 0,
+            history: MetricsHistory::new(),
+            last_update: Instant::now(),
+            update_count: 0,
+            paused: false,
+            selected_tab: 0,
             achievements_unlocked: 0,
-            recommendations: Vec::new(),
+            hourly_activity: [0; 24],
+            start_time: Instant::now(),
+            uptime: Duration::ZERO,
         }
     }
 
-    pub fn start_scan(&mut self) {
-        self.scanning = true;
-        self.scan_progress = 0.0;
-        self.status_message = "Scanning AI tool logs...".to_string();
-        self.start_time = Instant::now();
-    }
+    pub fn update(&mut self) -> Result<()> {
+        if self.paused {
+            return Ok(());
+        }
 
-    pub fn finish_scan(&mut self, findings: DiscoveryFindings) {
-        self.scanning = false;
-        self.scan_progress = 100.0;
+        self.uptime = self.start_time.elapsed();
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
 
-        // Calculate per-tool sizes
+        // Scan for changes
+        let discovery = LogDiscovery::new(self.base_dir.clone(), true);
+        let findings = discovery.scan()?;
+
+        // Calculate metrics
         self.tool_sizes.clear();
         for loc in &findings.locations {
             *self
@@ -124,66 +165,73 @@ impl App {
                 .or_insert(0) += loc.size_bytes;
         }
 
-        // Estimate tokens (rough: 1 byte ≈ 0.25 tokens for compressed text)
+        self.total_files = findings.total_files;
         self.estimated_tokens = findings.total_size_bytes / 4;
-
-        // Estimate cost (Claude Sonnet pricing: ~$12/M tokens blended)
         self.estimated_cost = (self.estimated_tokens as f64 / 1_000_000.0) * 12.0;
 
-        // Generate recommendations
-        self.generate_recommendations(&findings);
+        // Load conversation stats
+        let analyzer = ConversationAnalyzer::new(self.base_dir.clone());
+        if let Ok(stats) = analyzer.analyze() {
+            self.total_conversations = stats.total_conversations;
+            self.total_messages = stats.total_messages;
+            self.estimated_tokens = stats.total_tokens_estimate;
+            self.estimated_cost = (self.estimated_tokens as f64 / 1_000_000.0) * 12.0;
+        }
 
-        let elapsed = self.start_time.elapsed();
+        // Detect active sessions (files modified in last 5 minutes)
+        self.active_sessions = findings
+            .locations
+            .iter()
+            .filter(|loc| {
+                if let Some(newest) = loc.newest_entry {
+                    let age = chrono::Utc::now().signed_duration_since(newest);
+                    age.num_minutes() < 5
+                } else {
+                    false
+                }
+            })
+            .count();
+
+        // Save snapshot to history
+        let snapshot = MetricsSnapshot {
+            timestamp: now,
+            storage: findings.total_size_bytes,
+            conversations: self.total_conversations,
+            messages: self.total_messages,
+            tokens: self.estimated_tokens,
+            cost: self.estimated_cost,
+            files: self.total_files,
+            active_sessions: self.active_sessions,
+        };
+        self.history.push(snapshot);
+
+        self.findings = Some(findings);
+        self.update_count += 1;
+        self.last_update = Instant::now();
+
+        // Load insights on first update
+        if self.update_count == 1 {
+            self.load_insights();
+        }
+
         self.status_message = format!(
-            "Found {} files ({}) across {} tools in {:.1}s | Est. ${:.2} spent",
-            findings.total_files,
-            format_bytes(findings.total_size_bytes),
-            findings.tools_found.len(),
-            elapsed.as_secs_f64(),
+            "Updates: {} | Active: {} | Storage: {} | Cost: ${:.2}",
+            self.update_count,
+            self.active_sessions,
+            format_bytes(self.findings.as_ref().map(|f| f.total_size_bytes).unwrap_or(0)),
             self.estimated_cost
         );
-        self.findings = Some(findings);
+
+        Ok(())
     }
 
-    pub fn load_insights(&mut self) {
+    fn load_insights(&mut self) {
         // Load Claude Code stats
         let parser = ClaudeCodeParser::new(self.base_dir.clone());
         if let Ok(stats) = parser.parse() {
             self.total_conversations = stats.total_conversations;
             self.total_messages = stats.total_messages;
-            self.projects = stats.projects;
             self.estimated_tokens = stats.estimated_tokens.max(self.estimated_tokens);
-        }
-
-        // Load conversation stats from analyzer
-        let analyzer = ConversationAnalyzer::new(self.base_dir.clone());
-        if let Ok(stats) = analyzer.analyze() {
-            // Calculate user/assistant messages from by_tool
-            let mut user_msgs = 0;
-            let mut asst_msgs = 0;
-            for tool_stats in stats.by_tool.values() {
-                user_msgs += tool_stats.user_messages;
-                asst_msgs += tool_stats.assistant_messages;
-            }
-
-            self.conversation_stats = Some(ConversationStats {
-                total_conversations: stats.total_conversations,
-                total_messages: stats.total_messages,
-                user_messages: user_msgs,
-                assistant_messages: asst_msgs,
-                avg_messages_per_conv: if stats.total_conversations > 0 {
-                    stats.total_messages as f64 / stats.total_conversations as f64
-                } else {
-                    0.0
-                },
-                projects: HashMap::new(), // Not available in this analyzer
-            });
-            self.total_conversations = stats.total_conversations;
-            self.total_messages = stats.total_messages;
-
-            // Update cost estimate with actual tokens
-            self.estimated_tokens = stats.total_tokens_estimate;
-            self.estimated_cost = (self.estimated_tokens as f64 / 1_000_000.0) * 12.0;
         }
 
         // Load viral insights
@@ -200,148 +248,29 @@ impl App {
                 }
             }
 
-            // Copy daily heatmap
-            let days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-            for (i, day) in days.iter().enumerate() {
-                if let Some(count) = insights.time_analytics.daily_heatmap.get(*day) {
-                    self.daily_activity[i] = *count as u64;
-                }
-            }
-
-            self.achievements_unlocked =
-                insights.achievements.iter().filter(|a| a.unlocked).count();
+            self.achievements_unlocked = insights.achievements.iter().filter(|a| a.unlocked).count();
             self.insights = Some(insights);
         }
     }
 
-    fn generate_recommendations(&mut self, findings: &DiscoveryFindings) {
-        self.recommendations.clear();
-
-        // Check for large debug logs
-        let debug_size: u64 = findings
-            .locations
-            .iter()
-            .filter(|l| matches!(l.log_type, crate::models::LogType::Debug))
-            .map(|l| l.size_bytes)
-            .sum();
-
-        if debug_size > 100 * 1024 * 1024 {
-            self.recommendations.push(Recommendation {
-                priority: Priority::High,
-                title: "Clean debug logs".to_string(),
-                description: format!(
-                    "Debug logs are using {}. These can be safely deleted.",
-                    format_bytes(debug_size)
-                ),
-                savings: Some(format!("Save {}", format_bytes(debug_size))),
-            });
-        }
-
-        // Check for old file-history
-        let file_history_size: u64 = findings
-            .locations
-            .iter()
-            .filter(|l| matches!(l.log_type, crate::models::LogType::FileHistory))
-            .map(|l| l.size_bytes)
-            .sum();
-
-        if file_history_size > 500 * 1024 * 1024 {
-            self.recommendations.push(Recommendation {
-                priority: Priority::Medium,
-                title: "Prune file history".to_string(),
-                description: format!(
-                    "File history is using {}. Consider keeping only recent backups.",
-                    format_bytes(file_history_size)
-                ),
-                savings: Some(format!("Save ~{}", format_bytes(file_history_size / 2))),
-            });
-        }
-
-        // Check for multiple similar tools
-        if findings.tools_found.len() > 3 {
-            self.recommendations.push(Recommendation {
-                priority: Priority::Low,
-                title: "Consolidate AI tools".to_string(),
-                description: format!(
-                    "You have {} AI tools installed. Consider standardizing on fewer tools.",
-                    findings.tools_found.len()
-                ),
-                savings: None,
-            });
-        }
-
-        // Cost optimization
-        if self.estimated_cost > 50.0 {
-            self.recommendations.push(Recommendation {
-                priority: Priority::Medium,
-                title: "Review usage patterns".to_string(),
-                description: format!(
-                    "Estimated spend: ${:.2}. Use caching or batch similar queries.",
-                    self.estimated_cost
-                ),
-                savings: Some("Save ~30% with caching".to_string()),
-            });
-        }
-
-        // Backup recommendation
-        if findings.total_size_bytes > 1024 * 1024 * 1024 {
-            self.recommendations.push(Recommendation {
-                priority: Priority::High,
-                title: "Create backup".to_string(),
-                description: "Your AI logs exceed 1GB. Create a backup archive.".to_string(),
-                savings: Some("Run: vibedev backup".to_string()),
-            });
-        }
+    pub fn toggle_pause(&mut self) {
+        self.paused = !self.paused;
     }
 
     pub fn next_tab(&mut self) {
-        self.selected_tab = (self.selected_tab + 1) % 5;
-        self.selected_row = 0;
-        self.scroll_offset = 0;
+        self.selected_tab = (self.selected_tab + 1) % 3;
     }
 
     pub fn prev_tab(&mut self) {
         self.selected_tab = if self.selected_tab == 0 {
-            4
+            2
         } else {
             self.selected_tab - 1
         };
-        self.selected_row = 0;
-        self.scroll_offset = 0;
-    }
-
-    pub fn next_row(&mut self) {
-        if let Some(ref findings) = self.findings {
-            let max_rows = match self.selected_tab {
-                1 => findings.locations.len(),
-                4 => self.recommendations.len(),
-                _ => 10,
-            };
-            if max_rows > 0 {
-                self.selected_row = (self.selected_row + 1) % max_rows;
-            }
-        }
-    }
-
-    pub fn prev_row(&mut self) {
-        if let Some(ref findings) = self.findings {
-            let max_rows = match self.selected_tab {
-                1 => findings.locations.len(),
-                4 => self.recommendations.len(),
-                _ => 10,
-            };
-            if max_rows > 0 {
-                self.selected_row = if self.selected_row == 0 {
-                    max_rows - 1
-                } else {
-                    self.selected_row - 1
-                };
-            }
-        }
     }
 }
 
-/// Run the TUI application
+/// Run the real-time TUI
 pub fn run_tui(base_dir: PathBuf) -> Result<()> {
     // Setup terminal
     enable_raw_mode()?;
@@ -350,19 +279,11 @@ pub fn run_tui(base_dir: PathBuf) -> Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    // Create app state
-    let mut app = App::new(base_dir.clone());
+    // Create app
+    let mut app = App::new(base_dir);
 
-    // Auto-start scan
-    app.start_scan();
-    let discovery = LogDiscovery::new(base_dir, true);
-
-    // Run scan
-    let findings = discovery.scan()?;
-    app.finish_scan(findings);
-
-    // Load rich insights
-    app.load_insights();
+    // Initial update
+    app.update()?;
 
     // Main loop
     let result = run_app(&mut terminal, &mut app);
@@ -380,35 +301,35 @@ pub fn run_tui(base_dir: PathBuf) -> Result<()> {
 }
 
 fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Result<()> {
+    let mut last_tick = Instant::now();
+
     loop {
         terminal.draw(|f| ui(f, app))?;
 
-        if event::poll(Duration::from_millis(100))? {
+        // Update every second
+        let timeout = UPDATE_INTERVAL_MS
+            .saturating_sub(last_tick.elapsed().as_millis() as u64);
+
+        if event::poll(Duration::from_millis(timeout))? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
                     match key.code {
                         KeyCode::Char('q') | KeyCode::Esc => return Ok(()),
+                        KeyCode::Char('p') | KeyCode::Char(' ') => app.toggle_pause(),
                         KeyCode::Tab => app.next_tab(),
                         KeyCode::BackTab => app.prev_tab(),
-                        KeyCode::Down | KeyCode::Char('j') => app.next_row(),
-                        KeyCode::Up | KeyCode::Char('k') => app.prev_row(),
-                        KeyCode::Char('r') if !app.scanning => {
-                            app.start_scan();
-                            let discovery = LogDiscovery::new(app.base_dir.clone(), true);
-                            if let Ok(findings) = discovery.scan() {
-                                app.finish_scan(findings);
-                                app.load_insights();
-                            }
-                        }
                         KeyCode::Char('1') => app.selected_tab = 0,
                         KeyCode::Char('2') => app.selected_tab = 1,
                         KeyCode::Char('3') => app.selected_tab = 2,
-                        KeyCode::Char('4') => app.selected_tab = 3,
-                        KeyCode::Char('5') => app.selected_tab = 4,
                         _ => {}
                     }
                 }
             }
+        }
+
+        if last_tick.elapsed() >= Duration::from_millis(UPDATE_INTERVAL_MS) && !app.paused {
+            app.update()?;
+            last_tick = Instant::now();
         }
     }
 }
@@ -416,28 +337,54 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, app: &mut A
 fn ui(f: &mut Frame, app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .margin(1)
         .constraints([
-            Constraint::Length(3), // Title + tabs
-            Constraint::Length(3), // Status bar
-            Constraint::Min(10),   // Main content
-            Constraint::Length(1), // Footer
+            Constraint::Length(3),  // Header
+            Constraint::Length(5),  // Gauges
+            Constraint::Min(10),    // Main content
+            Constraint::Length(1),  // Footer
         ])
         .split(f.area());
 
-    // Header with tabs
+    // Header
+    render_header(f, app, chunks[0]);
+
+    // Gauges
+    render_gauges(f, app, chunks[1]);
+
+    // Main content
+    match app.selected_tab {
+        0 => render_realtime(f, app, chunks[2]),
+        1 => render_activity(f, app, chunks[2]),
+        2 => render_tools(f, app, chunks[2]),
+        _ => {}
+    }
+
+    // Footer
+    let footer = if app.paused {
+        " [PAUSED] p:Resume  q:Quit  Tab:Switch  1-3:Jump "
+    } else {
+        " p:Pause  q:Quit  Tab:Switch  1-3:Jump "
+    };
+    let footer_widget = Paragraph::new(footer)
+        .style(Style::default().fg(if app.paused { Color::Yellow } else { Color::DarkGray }));
+    f.render_widget(footer_widget, chunks[3]);
+}
+
+fn render_header(f: &mut Frame, app: &App, area: Rect) {
     let titles = vec![
-        "[1] Dashboard",
-        "[2] Storage",
-        "[3] Activity",
-        "[4] Insights",
-        "[5] Actions",
+        "[1] Real-Time",
+        "[2] Activity",
+        "[3] Tools",
     ];
     let tabs = Tabs::new(titles)
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(" vibedev - AI Coding Assistant Analyzer ")
+                .title(format!(
+                    " vibedev Monitor {} | Uptime: {}s ",
+                    if app.paused { "[PAUSED]" } else { "" },
+                    app.uptime.as_secs()
+                ))
                 .title_style(Style::default().fg(Color::Cyan).bold()),
         )
         .select(app.selected_tab)
@@ -448,287 +395,246 @@ fn ui(f: &mut Frame, app: &App) {
                 .add_modifier(Modifier::BOLD),
         )
         .divider(symbols::DOT);
-    f.render_widget(tabs, chunks[0]);
-
-    // Status bar
-    let status = Paragraph::new(app.status_message.clone())
-        .style(Style::default().fg(Color::White))
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::DarkGray)),
-        );
-    f.render_widget(status, chunks[1]);
-
-    // Main content area
-    match app.selected_tab {
-        0 => render_dashboard(f, app, chunks[2]),
-        1 => render_storage(f, app, chunks[2]),
-        2 => render_activity(f, app, chunks[2]),
-        3 => render_insights(f, app, chunks[2]),
-        4 => render_actions(f, app, chunks[2]),
-        _ => {}
-    }
-
-    // Footer
-    let footer = Paragraph::new(" q:Quit  Tab:Navigate  r:Rescan  1-5:Jump  j/k:Select ")
-        .style(Style::default().fg(Color::DarkGray));
-    f.render_widget(footer, chunks[3]);
+    f.render_widget(tabs, area);
 }
 
-fn render_dashboard(f: &mut Frame, app: &App, area: Rect) {
+fn render_gauges(f: &mut Frame, app: &App, area: Rect) {
     let chunks = Layout::default()
-        .direction(Direction::Vertical)
+        .direction(Direction::Horizontal)
         .constraints([
-            Constraint::Length(7), // Key metrics
-            Constraint::Length(8), // Activity sparklines
-            Constraint::Min(5),    // Tool breakdown
+            Constraint::Percentage(20),
+            Constraint::Percentage(20),
+            Constraint::Percentage(20),
+            Constraint::Percentage(20),
+            Constraint::Percentage(20),
         ])
         .split(area);
 
-    // Top: Key metrics in boxes
-    let metrics_chunks = Layout::default()
-        .direction(Direction::Horizontal)
+    // Active sessions gauge
+    let active_pct = ((app.active_sessions as f64 / 10.0) * 100.0).min(100.0) as u16;
+    let active_gauge = Gauge::default()
+        .block(Block::default().borders(Borders::ALL).title(" Active "))
+        .gauge_style(Style::default().fg(if app.active_sessions > 0 { Color::Green } else { Color::DarkGray }))
+        .percent(active_pct)
+        .label(format!("{}", app.active_sessions));
+    f.render_widget(active_gauge, chunks[0]);
+
+    // Conversations gauge
+    let conv_pct = ((app.total_conversations as f64 / 2000.0) * 100.0).min(100.0) as u16;
+    let conv_gauge = Gauge::default()
+        .block(Block::default().borders(Borders::ALL).title(" Convos "))
+        .gauge_style(Style::default().fg(Color::Cyan))
+        .percent(conv_pct)
+        .label(format!("{}", app.total_conversations));
+    f.render_widget(conv_gauge, chunks[1]);
+
+    // Messages gauge
+    let msg_pct = ((app.total_messages as f64 / 500000.0) * 100.0).min(100.0) as u16;
+    let msg_gauge = Gauge::default()
+        .block(Block::default().borders(Borders::ALL).title(" Messages "))
+        .gauge_style(Style::default().fg(Color::Blue))
+        .percent(msg_pct)
+        .label(format_large(app.total_messages));
+    f.render_widget(msg_gauge, chunks[2]);
+
+    // Tokens gauge
+    let token_pct = ((app.estimated_tokens as f64 / 500_000_000.0) * 100.0).min(100.0) as u16;
+    let token_gauge = Gauge::default()
+        .block(Block::default().borders(Borders::ALL).title(" Tokens "))
+        .gauge_style(Style::default().fg(Color::Yellow))
+        .percent(token_pct)
+        .label(format_tokens(app.estimated_tokens));
+    f.render_widget(token_gauge, chunks[3]);
+
+    // Cost gauge
+    let cost_pct = ((app.estimated_cost / 2000.0) * 100.0).min(100.0) as u16;
+    let cost_gauge = Gauge::default()
+        .block(Block::default().borders(Borders::ALL).title(" Cost "))
+        .gauge_style(Style::default().fg(Color::Magenta))
+        .percent(cost_pct)
+        .label(format!("${:.0}", app.estimated_cost));
+    f.render_widget(cost_gauge, chunks[4]);
+}
+
+fn render_realtime(f: &mut Frame, app: &App, area: Rect) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
         .constraints([
-            Constraint::Percentage(25),
-            Constraint::Percentage(25),
-            Constraint::Percentage(25),
-            Constraint::Percentage(25),
+            Constraint::Length(8),  // Storage sparkline
+            Constraint::Length(8),  // Conversations sparkline
+            Constraint::Length(8),  // Tokens sparkline
+            Constraint::Min(4),     // Live stats
         ])
-        .split(chunks[0]);
+        .split(area);
 
-    // Storage metric
-    let storage_text = app
-        .findings
-        .as_ref()
-        .map(|f| format_bytes(f.total_size_bytes))
-        .unwrap_or_else(|| "0 B".to_string());
-    render_metric_box(f, metrics_chunks[0], "STORAGE", &storage_text, Color::Cyan);
+    // Storage over time
+    let storage_data: Vec<u64> = app.history.storage.iter().cloned().collect();
+    let max_storage = *storage_data.iter().max().unwrap_or(&1);
+    let storage_sparkline = Sparkline::default()
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(format!(
+                    " Storage ({}s) - Current: {} ",
+                    storage_data.len(),
+                    format_bytes(storage_data.last().cloned().unwrap_or(0))
+                )),
+        )
+        .data(&storage_data)
+        .max(max_storage.max(1))
+        .style(Style::default().fg(Color::Cyan));
+    f.render_widget(storage_sparkline, chunks[0]);
 
-    // Conversations metric
-    let conv_text = format!("{}", app.total_conversations);
-    render_metric_box(
-        f,
-        metrics_chunks[1],
-        "CONVERSATIONS",
-        &conv_text,
-        Color::Green,
-    );
+    // Conversations over time
+    let conv_data: Vec<u64> = app.history.conversations.iter().map(|&x| x as u64).collect();
+    let max_conv = *conv_data.iter().max().unwrap_or(&1);
+    let conv_sparkline = Sparkline::default()
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(format!(
+                    " Conversations ({}s) - Current: {} ",
+                    conv_data.len(),
+                    conv_data.last().cloned().unwrap_or(0)
+                )),
+        )
+        .data(&conv_data)
+        .max(max_conv.max(1))
+        .style(Style::default().fg(Color::Green));
+    f.render_widget(conv_sparkline, chunks[1]);
 
-    // Tokens metric
-    let tokens_text = format_tokens(app.estimated_tokens);
-    render_metric_box(f, metrics_chunks[2], "TOKENS", &tokens_text, Color::Yellow);
+    // Tokens over time
+    let token_data: Vec<u64> = app.history.tokens.iter().cloned().collect();
+    let max_tokens = *token_data.iter().max().unwrap_or(&1);
+    let tokens_sparkline = Sparkline::default()
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(format!(
+                    " Tokens ({}s) - Current: {} ",
+                    token_data.len(),
+                    format_tokens(token_data.last().cloned().unwrap_or(0))
+                )),
+        )
+        .data(&token_data)
+        .max(max_tokens.max(1))
+        .style(Style::default().fg(Color::Yellow));
+    f.render_widget(tokens_sparkline, chunks[2]);
 
-    // Cost metric
-    let cost_text = format!("${:.2}", app.estimated_cost);
-    render_metric_box(
-        f,
-        metrics_chunks[3],
-        "EST. COST",
-        &cost_text,
-        Color::Magenta,
-    );
-
-    // Middle: Activity sparklines
-    let spark_chunks = Layout::default()
+    // Live stats
+    let stats_chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(chunks[1]);
+        .split(chunks[3]);
 
-    // Hourly activity sparkline
-    let hourly_data: Vec<u64> = app.hourly_activity.to_vec();
-    let max_hourly = *hourly_data.iter().max().unwrap_or(&1);
-    let hourly_sparkline = Sparkline::default()
+    // Calculate rates (per second)
+    let storage_rate = if app.history.storage.len() >= 2 {
+        let first = app.history.storage.front().cloned().unwrap_or(0);
+        let last = app.history.storage.back().cloned().unwrap_or(0);
+        let time_diff = app.history.timestamps.len() as f64;
+        ((last as f64 - first as f64) / time_diff) as i64
+    } else {
+        0
+    };
+
+    let conv_rate = if app.history.conversations.len() >= 2 {
+        let first = app.history.conversations.front().cloned().unwrap_or(0);
+        let last = app.history.conversations.back().cloned().unwrap_or(0);
+        let time_diff = app.history.timestamps.len() as f64;
+        ((last as f64 - first as f64) / time_diff * 60.0) as i64 // per minute
+    } else {
+        0
+    };
+
+    let stats_text = format!(
+        "Storage Rate: {}/s\n\
+         Conversation Rate: {}/min\n\
+         Files Tracked: {}\n\
+         Tools Found: {}\n\
+         Active Sessions: {}\n\
+         Updates: {}",
+        format_bytes_signed(storage_rate),
+        conv_rate,
+        app.total_files,
+        app.tool_sizes.len(),
+        app.active_sessions,
+        app.update_count
+    );
+
+    let stats_para = Paragraph::new(stats_text)
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(" Hourly Activity (24h) "),
+                .title(" Live Stats "),
         )
-        .data(&hourly_data)
-        .max(max_hourly.max(1))
-        .style(Style::default().fg(Color::Cyan));
-    f.render_widget(hourly_sparkline, spark_chunks[0]);
+        .wrap(Wrap { trim: true });
+    f.render_widget(stats_para, stats_chunks[0]);
 
-    // Daily activity sparkline
-    let daily_data: Vec<u64> = app.daily_activity.to_vec();
-    let max_daily = *daily_data.iter().max().unwrap_or(&1);
-    let daily_sparkline = Sparkline::default()
+    // Recent changes
+    let changes_text = if app.history.storage.len() >= 2 {
+        let storage_delta = app.history.storage.back().cloned().unwrap_or(0) as i64
+            - app.history.storage.front().cloned().unwrap_or(0) as i64;
+        let conv_delta = app.history.conversations.back().cloned().unwrap_or(0) as i64
+            - app.history.conversations.front().cloned().unwrap_or(0) as i64;
+        let msg_delta = app.history.messages.back().cloned().unwrap_or(0) as i64
+            - app.history.messages.front().cloned().unwrap_or(0) as i64;
+        let cost_delta = app.history.cost.back().cloned().unwrap_or(0.0)
+            - app.history.cost.front().cloned().unwrap_or(0.0);
+
+        format!(
+            "Storage: {}\n\
+             Conversations: {:+}\n\
+             Messages: {:+}\n\
+             Cost: ${:+.2}\n\n\
+             Since: {}s ago",
+            format_bytes_signed(storage_delta),
+            conv_delta,
+            msg_delta,
+            cost_delta,
+            app.history.timestamps.len()
+        )
+    } else {
+        "Collecting data...".to_string()
+    };
+
+    let changes_para = Paragraph::new(changes_text)
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(" Weekly Activity (Mon-Sun) "),
+                .title(" Changes (Last 60s) "),
         )
-        .data(&daily_data)
-        .max(max_daily.max(1))
-        .style(Style::default().fg(Color::Green));
-    f.render_widget(daily_sparkline, spark_chunks[1]);
-
-    // Bottom: Tool breakdown
-    render_tool_bars(f, app, chunks[2]);
-}
-
-fn render_metric_box(f: &mut Frame, area: Rect, label: &str, value: &str, color: Color) {
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(color));
-
-    let inner = block.inner(area);
-    f.render_widget(block, area);
-
-    let text = vec![
-        Line::from(Span::styled(
-            label,
-            Style::default()
-                .fg(Color::DarkGray)
-                .add_modifier(Modifier::BOLD),
-        )),
-        Line::from(""),
-        Line::from(Span::styled(
-            value,
-            Style::default().fg(color).add_modifier(Modifier::BOLD),
-        )),
-    ];
-
-    let paragraph = Paragraph::new(text).alignment(ratatui::layout::Alignment::Center);
-    f.render_widget(paragraph, inner);
-}
-
-fn render_tool_bars(f: &mut Frame, app: &App, area: Rect) {
-    let Some(ref findings) = app.findings else {
-        let placeholder = Paragraph::new("No data")
-            .block(Block::default().borders(Borders::ALL).title(" Tools "));
-        f.render_widget(placeholder, area);
-        return;
-    };
-
-    let mut tool_data: Vec<_> = app.tool_sizes.iter().collect();
-    tool_data.sort_by(|a, b| b.1.cmp(a.1));
-
-    let max_size = tool_data.first().map(|(_, s)| **s).unwrap_or(1);
-
-    let bars: Vec<Bar> = tool_data
-        .iter()
-        .take(8)
-        .map(|(name, size)| {
-            let height = ((**size as f64 / max_size as f64) * 100.0) as u64;
-            Bar::default()
-                .value(height)
-                .label(Line::from(truncate(name, 10)))
-                .text_value(format_bytes(**size))
-                .style(Style::default().fg(Color::Cyan))
-        })
-        .collect();
-
-    let bar_chart = BarChart::default()
-        .block(Block::default().borders(Borders::ALL).title(format!(
-            " Storage by Tool ({}) ",
-            findings.tools_found.len()
-        )))
-        .data(BarGroup::default().bars(&bars))
-        .bar_width(10)
-        .bar_gap(1)
-        .max(100);
-
-    f.render_widget(bar_chart, area);
-}
-
-fn render_storage(f: &mut Frame, app: &App, area: Rect) {
-    let Some(ref findings) = app.findings else {
-        let placeholder = Paragraph::new("No data. Press 'r' to scan.")
-            .block(Block::default().borders(Borders::ALL).title(" Storage "));
-        f.render_widget(placeholder, area);
-        return;
-    };
-
-    // Sort locations by size (largest first)
-    let mut locations: Vec<_> = findings.locations.iter().collect();
-    locations.sort_by(|a, b| b.size_bytes.cmp(&a.size_bytes));
-
-    let rows: Vec<Row> = locations
-        .iter()
-        .enumerate()
-        .map(|(i, loc)| {
-            let style = if i == app.selected_row {
-                Style::default()
-                    .bg(Color::DarkGray)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default()
-            };
-
-            let pct = (loc.size_bytes as f64 / findings.total_size_bytes as f64) * 100.0;
-            let bar_width = ((pct / 100.0) * 20.0) as usize;
-            let bar = "█".repeat(bar_width) + &"░".repeat(20 - bar_width);
-
-            // Color code by type
-            let type_color = match loc.log_type {
-                crate::models::LogType::Debug => Color::Red,
-                crate::models::LogType::History => Color::Green,
-                crate::models::LogType::FileHistory => Color::Yellow,
-                crate::models::LogType::Session => Color::Cyan,
-                _ => Color::Gray,
-            };
-
-            Row::new(vec![
-                Span::styled(
-                    loc.tool.name().to_string(),
-                    Style::default().fg(Color::Cyan),
-                ),
-                Span::styled(
-                    format!("{:?}", loc.log_type),
-                    Style::default().fg(type_color),
-                ),
-                Span::styled(
-                    format_bytes(loc.size_bytes),
-                    Style::default().fg(Color::Yellow),
-                ),
-                Span::raw(format!("{:>5.1}%", pct)),
-                Span::styled(bar, Style::default().fg(Color::Green)),
-                Span::raw(loc.file_count.to_string()),
-            ])
-            .style(style)
-        })
-        .collect();
-
-    let header = Row::new(vec!["Tool", "Type", "Size", "%", "Usage", "Files"])
-        .style(
-            Style::default()
-                .add_modifier(Modifier::BOLD)
-                .fg(Color::White),
-        )
-        .bottom_margin(1);
-
-    let table = Table::new(
-        rows,
-        [
-            Constraint::Length(15),
-            Constraint::Length(12),
-            Constraint::Length(10),
-            Constraint::Length(7),
-            Constraint::Length(22),
-            Constraint::Length(8),
-        ],
-    )
-    .header(header)
-    .block(Block::default().borders(Borders::ALL).title(format!(
-        " Storage Locations ({}) - Total: {} ",
-        findings.locations.len(),
-        format_bytes(findings.total_size_bytes)
-    )));
-
-    f.render_widget(table, area);
+        .wrap(Wrap { trim: true });
+    f.render_widget(changes_para, stats_chunks[1]);
 }
 
 fn render_activity(f: &mut Frame, app: &App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(12), // Hourly heatmap
-            Constraint::Min(8),     // Stats
+            Constraint::Length(8),  // Active sessions sparkline
+            Constraint::Min(8),     // Hourly heatmap
         ])
         .split(area);
 
-    // Hourly heatmap visualization
+    // Active sessions over time
+    let active_data: Vec<u64> = app.history.active_sessions.iter().map(|&x| x as u64).collect();
+    let max_active = *active_data.iter().max().unwrap_or(&1).max(&1);
+    let active_sparkline = Sparkline::default()
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(format!(
+                    " Active Sessions ({}s) - Current: {} ",
+                    active_data.len(),
+                    active_data.last().cloned().unwrap_or(0)
+                )),
+        )
+        .data(&active_data)
+        .max(max_active)
+        .style(Style::default().fg(Color::Green));
+    f.render_widget(active_sparkline, chunks[0]);
+
+    // Hourly activity heatmap
     let mut hourly_lines: Vec<Line> = vec![Line::from(Span::styled(
         "  00  01  02  03  04  05  06  07  08  09  10  11  12  13  14  15  16  17  18  19  20  21  22  23",
         Style::default().fg(Color::DarkGray),
@@ -767,11 +673,7 @@ fn render_activity(f: &mut Frame, app: &App, area: Rect) {
             hour_spans.clear();
         }
     }
-    if !hour_spans.is_empty() {
-        hourly_lines.push(Line::from(hour_spans));
-    }
 
-    // Peak hour indicator
     let peak_hour = app
         .hourly_activity
         .iter()
@@ -782,7 +684,7 @@ fn render_activity(f: &mut Frame, app: &App, area: Rect) {
 
     hourly_lines.push(Line::from(""));
     hourly_lines.push(Line::from(vec![
-        Span::raw("Peak productivity: "),
+        Span::raw("Peak: "),
         Span::styled(
             format!("{:02}:00 - {:02}:00", peak_hour, (peak_hour + 1) % 24),
             Style::default().fg(Color::Green).bold(),
@@ -793,267 +695,64 @@ fn render_activity(f: &mut Frame, app: &App, area: Rect) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(" Hourly Activity Heatmap "),
+                .title(" 24-Hour Activity Heatmap "),
         )
         .wrap(Wrap { trim: false });
-    f.render_widget(heatmap, chunks[0]);
-
-    // Stats section
-    let chunks_bottom = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(chunks[1]);
-
-    // Daily breakdown
-    let days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-    let max_daily = *app.daily_activity.iter().max().unwrap_or(&1).max(&1);
-
-    let daily_bars: Vec<Bar> = days
-        .iter()
-        .enumerate()
-        .map(|(i, day)| {
-            let count = app.daily_activity[i];
-            let height = if max_daily > 0 {
-                ((count as f64 / max_daily as f64) * 100.0) as u64
-            } else {
-                0
-            };
-            Bar::default()
-                .value(height)
-                .label(Line::from(*day))
-                .text_value(count.to_string())
-                .style(Style::default().fg(if i < 5 { Color::Cyan } else { Color::Magenta }))
-        })
-        .collect();
-
-    let daily_chart = BarChart::default()
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(" Daily Activity "),
-        )
-        .data(BarGroup::default().bars(&daily_bars))
-        .bar_width(5)
-        .bar_gap(1)
-        .max(100);
-
-    f.render_widget(daily_chart, chunks_bottom[0]);
-
-    // Session stats
-    let session_info = if let Some(ref insights) = app.insights {
-        let ta = &insights.time_analytics;
-        format!(
-            "Late night sessions: {}\n\
-             Binge coding (8h+): {}\n\
-             Most productive hour: {:02}:00\n\
-             Most productive day: {}\n\
-             Avg gap between sessions: {:.1}h",
-            ta.late_night_sessions,
-            ta.binge_coding_sessions,
-            ta.most_productive_hour,
-            ta.most_productive_day,
-            ta.average_session_gap_hours
-        )
-    } else {
-        "Loading session analytics...".to_string()
-    };
-
-    let session_para = Paragraph::new(session_info)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(" Session Stats "),
-        )
-        .wrap(Wrap { trim: true });
-    f.render_widget(session_para, chunks_bottom[1]);
+    f.render_widget(heatmap, chunks[1]);
 }
 
-fn render_insights(f: &mut Frame, app: &App, area: Rect) {
-    let chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(area);
-
-    // Left: Fun facts & Comparisons
-    let left_chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(chunks[0]);
-
-    let fun_facts_text = if let Some(ref insights) = app.insights {
-        let ff = &insights.fun_facts;
-        let cmp = &insights.comparisons;
-        format!(
-            "Your AI usage equals:\n\n\
-             {} novels worth of text\n\
-             {} pages if printed\n\
-             {:.4}% of Wikipedia\n\
-             {} hours of reading\n\
-             {} kg CO2 footprint\n\
-             {} coffees worth ($5 each)\n\n\
-             That's {} Harry Potter series!",
-            format!("{:.1}", ff.tokens_in_books),
-            ff.pages_if_printed,
-            ff.tokens_in_wikipedia,
-            format!("{:.0}", ff.reading_time_hours),
-            format!("{:.2}", ff.carbon_footprint_kg),
-            ff.cost_in_coffee,
-            format!("{:.1}", cmp.harry_potter_series),
-        )
-    } else {
-        "Loading fun facts...".to_string()
+fn render_tools(f: &mut Frame, app: &App, area: Rect) {
+    let Some(ref findings) = app.findings else {
+        let placeholder = Paragraph::new("Scanning...")
+            .block(Block::default().borders(Borders::ALL).title(" Tools "));
+        f.render_widget(placeholder, area);
+        return;
     };
 
-    let fun_facts = Paragraph::new(fun_facts_text)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(" Fun Facts ")
-                .border_style(Style::default().fg(Color::Magenta)),
-        )
-        .wrap(Wrap { trim: true });
-    f.render_widget(fun_facts, left_chunks[0]);
+    let mut tool_data: Vec<_> = app.tool_sizes.iter().collect();
+    tool_data.sort_by(|a, b| b.1.cmp(a.1));
 
-    // Behavior patterns
-    let behavior_text = if let Some(ref insights) = app.insights {
-        let bp = &insights.behavior_patterns;
-        format!(
-            "Frustration moments: {}\n\
-             'Go on' count: {}\n\
-             Retry attempts: {}\n\
-             Politeness score: {:.0}%\n\
-             Command spam events: {}\n\
-             Typos detected: {}",
-            bp.frustration_count,
-            bp.go_on_count,
-            bp.retry_count,
-            bp.politeness_score * 100.0,
-            bp.command_spam_events,
-            bp.typo_count,
-        )
-    } else {
-        "Loading behavior analysis...".to_string()
-    };
-
-    let behavior = Paragraph::new(behavior_text)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(" Behavior Patterns ")
-                .border_style(Style::default().fg(Color::Yellow)),
-        )
-        .wrap(Wrap { trim: true });
-    f.render_widget(behavior, left_chunks[1]);
-
-    // Right: Achievements
-    let achievements_list: Vec<ListItem> = if let Some(ref insights) = app.insights {
-        insights
-            .achievements
-            .iter()
-            .map(|a| {
-                let style = if a.unlocked {
-                    Style::default().fg(Color::Green)
-                } else {
-                    Style::default().fg(Color::DarkGray)
-                };
-                let status = if a.unlocked { "[x]" } else { "[ ]" };
-                ListItem::new(Line::from(vec![
-                    Span::styled(format!("{} {} ", status, a.emoji), style),
-                    Span::styled(&a.name, style.add_modifier(Modifier::BOLD)),
-                    Span::styled(format!(" - {}", a.description), style),
-                ]))
-            })
-            .collect()
-    } else {
-        vec![ListItem::new("Loading achievements...")]
-    };
-
-    let achievements = List::new(achievements_list).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title(format!(
-                " Achievements ({}/{}) ",
-                app.achievements_unlocked,
-                app.insights
-                    .as_ref()
-                    .map(|i| i.achievements.len())
-                    .unwrap_or(0)
-            ))
-            .border_style(Style::default().fg(Color::Cyan)),
-    );
-    f.render_widget(achievements, chunks[1]);
-}
-
-fn render_actions(f: &mut Frame, app: &App, area: Rect) {
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Min(10), Constraint::Length(8)])
-        .split(area);
-
-    // Recommendations list
-    let rec_items: Vec<ListItem> = app
-        .recommendations
+    let rows: Vec<Row> = tool_data
         .iter()
-        .enumerate()
-        .map(|(i, rec)| {
-            let (icon, color) = match rec.priority {
-                Priority::High => ("!!!", Color::Red),
-                Priority::Medium => (" ! ", Color::Yellow),
-                Priority::Low => ("   ", Color::Green),
-            };
+        .map(|(name, size)| {
+            let pct = (**size as f64 / findings.total_size_bytes as f64) * 100.0;
+            let bar_width = ((pct / 100.0) * 30.0) as usize;
+            let bar = "█".repeat(bar_width) + &"░".repeat(30 - bar_width);
 
-            let style = if i == app.selected_row {
-                Style::default().bg(Color::DarkGray)
-            } else {
-                Style::default()
-            };
-
-            let savings_text = rec
-                .savings
-                .as_ref()
-                .map(|s| format!(" [{}]", s))
-                .unwrap_or_default();
-
-            ListItem::new(vec![
-                Line::from(vec![
-                    Span::styled(icon, Style::default().fg(color).bold()),
-                    Span::styled(&rec.title, Style::default().bold().fg(Color::White)),
-                    Span::styled(savings_text, Style::default().fg(Color::Green)),
-                ]),
-                Line::from(Span::styled(
-                    format!("    {}", rec.description),
-                    Style::default().fg(Color::Gray),
-                )),
+            Row::new(vec![
+                Span::styled(name.to_string(), Style::default().fg(Color::Cyan)),
+                Span::styled(format_bytes(**size), Style::default().fg(Color::Yellow)),
+                Span::raw(format!("{:>5.1}%", pct)),
+                Span::styled(bar, Style::default().fg(Color::Green)),
             ])
-            .style(style)
         })
         .collect();
 
-    let recommendations = List::new(rec_items).block(
+    let header = Row::new(vec!["Tool", "Size", "%", "Distribution"])
+        .style(
+            Style::default()
+                .add_modifier(Modifier::BOLD)
+                .fg(Color::White),
+        )
+        .bottom_margin(1);
+
+    let table = Table::new(
+        rows,
+        [
+            Constraint::Length(20),
+            Constraint::Length(12),
+            Constraint::Length(8),
+            Constraint::Min(32),
+        ],
+    )
+    .header(header)
+    .block(
         Block::default()
             .borders(Borders::ALL)
-            .title(format!(" Recommendations ({}) ", app.recommendations.len()))
-            .border_style(Style::default().fg(Color::Yellow)),
+            .title(format!(" Tools ({}) ", tool_data.len())),
     );
-    f.render_widget(recommendations, chunks[0]);
 
-    // Quick actions
-    let actions_text = "\
-Commands you can run:\n\n\
-  vibedev backup              Create backup archive\n\
-  vibedev analyze --html      Generate HTML report\n\
-  vibedev prepare             Export training dataset\n\
-  vibedev insights            Full insights dashboard";
-
-    let actions = Paragraph::new(actions_text)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(" Quick Actions ")
-                .border_style(Style::default().fg(Color::Cyan)),
-        )
-        .wrap(Wrap { trim: true });
-    f.render_widget(actions, chunks[1]);
+    f.render_widget(table, area);
 }
 
 fn format_bytes(bytes: u64) -> String {
@@ -1072,6 +771,12 @@ fn format_bytes(bytes: u64) -> String {
     }
 }
 
+fn format_bytes_signed(bytes: i64) -> String {
+    let abs_bytes = bytes.abs() as u64;
+    let sign = if bytes >= 0 { "+" } else { "-" };
+    format!("{}{}", sign, format_bytes(abs_bytes))
+}
+
 fn format_tokens(tokens: u64) -> String {
     if tokens >= 1_000_000_000 {
         format!("{:.1}B", tokens as f64 / 1_000_000_000.0)
@@ -1081,6 +786,16 @@ fn format_tokens(tokens: u64) -> String {
         format!("{:.1}K", tokens as f64 / 1_000.0)
     } else {
         format!("{}", tokens)
+    }
+}
+
+fn format_large(num: usize) -> String {
+    if num >= 1_000_000 {
+        format!("{:.1}M", num as f64 / 1_000_000.0)
+    } else if num >= 1_000 {
+        format!("{:.1}K", num as f64 / 1_000.0)
+    } else {
+        format!("{}", num)
     }
 }
 
@@ -1250,7 +965,7 @@ pub fn print_cli_output(base_dir: PathBuf) -> Result<()> {
     println!();
     println!(
         "{}",
-        ColoredColorize::bright_black("Run 'vibedev tui' for interactive dashboard")
+        ColoredColorize::bright_black("Run 'vibedev tui' for real-time monitoring dashboard")
     );
 
     Ok(())
