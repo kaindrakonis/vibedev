@@ -6,11 +6,17 @@ use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 
 mod advanced_analytics;
+mod ai_impact_analyzer;
 mod analysis;
+mod cli_output;
+mod history_sanitizer;
 mod analyzer;
 mod backup;
 mod claude_code_parser;
 mod comprehensive_analyzer;
+mod comprehensive_backup_analytics;
+mod shell_analytics;
+mod workflow_correlation;
 mod discovery;
 mod metrics;
 mod models;
@@ -24,6 +30,7 @@ mod work_hours_analyzer;
 mod cache;
 mod daemon;
 mod timeline;
+mod timeline_png;
 mod dataset_extractor;
 mod deep_insights;
 mod embedded_llm;
@@ -60,6 +67,14 @@ struct Cli {
     /// Enable debug logging
     #[arg(short, long, global = true)]
     verbose: bool,
+
+    /// Output in machine-readable JSON format
+    #[arg(long, global = true)]
+    json: bool,
+
+    /// Disable colors and emojis (for piping/logging)
+    #[arg(long, global = true)]
+    plain: bool,
 }
 
 #[derive(Subcommand)]
@@ -115,6 +130,22 @@ enum Commands {
         /// Include a timestamp in filename
         #[arg(long, default_value = "true")]
         timestamp: bool,
+
+        /// Include full Claude logs directory
+        #[arg(long)]
+        include_claude: bool,
+
+        /// Include git commit history from all repos
+        #[arg(long)]
+        include_git: bool,
+
+        /// Generate AI Impact Analysis (correlates AI usage with git commits)
+        #[arg(long)]
+        analyze_impact: bool,
+
+        /// Include shell history (bash, zsh, fish) - sanitized from API keys
+        #[arg(long)]
+        include_history: bool,
     },
 
     /// Restore AI logs from backup archive
@@ -290,6 +321,33 @@ enum Commands {
         #[arg(long, default_value = "auto")]
         precision: String,
     },
+
+    /// Generate coding journey timeline visualization
+    Timeline {
+        /// Base directory to scan (default: $HOME)
+        #[arg(short, long)]
+        base_dir: Option<PathBuf>,
+
+        /// Export timeline to PNG file
+        #[arg(short, long)]
+        png: Option<PathBuf>,
+
+        /// Print timeline to terminal
+        #[arg(long)]
+        print: bool,
+
+        /// Cluster nearby sessions (reduces 119K to ~500)
+        #[arg(long)]
+        cluster: bool,
+
+        /// Show only last N months (default: all time)
+        #[arg(long)]
+        months: Option<i64>,
+
+        /// Skip shell/vim/tmux sessions (focus on AI tools and git)
+        #[arg(long)]
+        skip_noise: bool,
+    },
 }
 
 /// Load analysis data from a directory (JSON files, reports, datasets)
@@ -384,6 +442,17 @@ async fn main() -> Result<()> {
         .finish();
     tracing::subscriber::set_global_default(subscriber)?;
 
+    // Initialize output writer based on flags
+    use cli_output::{OutputMode, OutputWriter};
+    let output_mode = if cli.json {
+        OutputMode::Json
+    } else if cli.plain {
+        OutputMode::Plain
+    } else {
+        OutputMode::auto()
+    };
+    let out = OutputWriter::new(output_mode);
+
     match cli.command {
         Commands::Discover { base_dir, hidden } => {
             info!("🔍 Discovering AI tool logs...");
@@ -433,16 +502,259 @@ async fn main() -> Result<()> {
             tool,
             compression,
             timestamp,
+            include_claude,
+            include_git,
+            analyze_impact,
+            include_history,
         } => {
+            use colored::Colorize;
+
             info!("💾 Creating backup archive...");
 
             let output_dir = output
                 .unwrap_or_else(|| dirs::home_dir().expect("Could not determine home directory"));
 
-            let manager = BackupManager::new(output_dir, compression);
-            let archive_path = manager.create_backup(tool, timestamp).await?;
+            // Standard AI logs backup
+            let manager = BackupManager::new(output_dir.clone(), compression);
+            let archive_path = manager.create_backup(tool.clone(), timestamp).await?;
 
-            println!("✅ Backup created: {}", archive_path.display());
+            println!("✅ AI logs backup created: {}", archive_path.display());
+
+            // Additional Claude logs backup
+            if include_claude {
+                println!();
+                println!("{}", "📁 Adding Claude logs to backup...".cyan());
+
+                let home = dirs::home_dir().expect("Could not determine home directory");
+                let claude_dir = home.join(".claude");
+
+                if claude_dir.exists() {
+                    let claude_archive = if timestamp {
+                        output_dir.join(format!("claude-logs-{}.tar.gz", chrono::Utc::now().format("%Y%m%d-%H%M%S")))
+                    } else {
+                        output_dir.join("claude-logs.tar.gz")
+                    };
+
+                    std::process::Command::new("tar")
+                        .args(&["-czf", claude_archive.to_str().unwrap(), "-C", home.to_str().unwrap(), ".claude"])
+                        .status()?;
+
+                    let size = std::fs::metadata(&claude_archive)?.len() as f64 / 1024.0 / 1024.0;
+                    println!("  {} Claude logs: {:.1} MB", "✓".green(), size);
+                } else {
+                    println!("  {} No Claude logs found", "⚠".yellow());
+                }
+            }
+
+            // Git history backup and/or AI Impact Analysis
+            let home = dirs::home_dir().expect("Could not determine home directory");
+            let git_repos = if include_git || analyze_impact {
+                use timeline::TimelineAnalyzer;
+                let analyzer = TimelineAnalyzer::new(home.clone());
+                analyzer.find_git_repos()?
+            } else {
+                Vec::new()
+            };
+
+            if include_git {
+                println!();
+                println!("{}", "📝 Exporting git commit history...".cyan());
+                println!("  {} Found {} git repositories", "✓".green(), git_repos.len());
+
+                let git_logs_dir = output_dir.join("git-logs");
+                std::fs::create_dir_all(&git_logs_dir)?;
+
+                for (idx, repo) in git_repos.iter().enumerate() {
+                    let repo_name = repo.file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("unknown");
+
+                    let log_file = git_logs_dir.join(format!("{}.gitlog", repo_name));
+                    let output = std::process::Command::new("git")
+                        .arg("-C")
+                        .arg(repo)
+                        .args(&["log", "--all", "--pretty=format:%H|%an|%ae|%at|%s", "--no-merges"])
+                        .output()?;
+
+                    std::fs::write(&log_file, &output.stdout)?;
+
+                    if idx < 5 || idx % 20 == 0 {
+                        println!("  {} {}", "✓".green(), repo_name);
+                    }
+                }
+
+                // Create archive of git logs
+                let git_archive = if timestamp {
+                    output_dir.join(format!("git-logs-{}.tar.gz", chrono::Utc::now().format("%Y%m%d-%H%M%S")))
+                } else {
+                    output_dir.join("git-logs.tar.gz")
+                };
+
+                std::process::Command::new("tar")
+                    .args(&["-czf", git_archive.to_str().unwrap(), "-C", output_dir.to_str().unwrap(), "git-logs"])
+                    .status()?;
+
+                std::fs::remove_dir_all(&git_logs_dir)?;
+
+                let size = std::fs::metadata(&git_archive)?.len() as f64 / 1024.0 / 1024.0;
+                println!("  {} Git logs archive: {:.1} MB ({} repos)", "✓".green(), size, git_repos.len());
+            }
+
+            // Shell history backup (sanitized)
+            if include_history {
+                use history_sanitizer::HistorySanitizer;
+
+                println!();
+                println!("{}", "🐚 Backing up shell history (sanitized)...".cyan());
+
+                let sanitizer = HistorySanitizer::new();
+                let histories = sanitizer.find_and_sanitize_history(&home)?;
+
+                if !histories.is_empty() {
+                    let history_dir = output_dir.join("shell-history");
+                    std::fs::create_dir_all(&history_dir)?;
+
+                    let mut total_lines = 0;
+                    for (filename, content) in &histories {
+                        let file_path = history_dir.join(filename);
+                        std::fs::write(&file_path, content)?;
+                        total_lines += content.lines().count();
+                        println!("  {} {}", "✓".green(), filename);
+                    }
+
+                    // Create archive
+                    let history_archive = if timestamp {
+                        output_dir.join(format!("shell-history-{}.tar.gz", chrono::Utc::now().format("%Y%m%d-%H%M%S")))
+                    } else {
+                        output_dir.join("shell-history.tar.gz")
+                    };
+
+                    std::process::Command::new("tar")
+                        .args(&["-czf", history_archive.to_str().unwrap(), "-C", output_dir.to_str().unwrap(), "shell-history"])
+                        .status()?;
+
+                    std::fs::remove_dir_all(&history_dir)?;
+
+                    let size = std::fs::metadata(&history_archive)?.len() as f64 / 1024.0;
+                    println!("  {} Shell history: {:.1} KB ({} commands, sanitized)", "✓".green(), size, total_lines);
+                } else {
+                    println!("  {} No shell history files found", "⚠".yellow());
+                }
+            }
+
+            // Generate Comprehensive Analytics if requested
+            if analyze_impact {
+                use comprehensive_backup_analytics::{ComprehensiveAnalyticsEngine, Priority};
+
+                println!();
+                println!("{}", "🔬 Running Comprehensive Productivity Analysis...".cyan().bold());
+                println!();
+
+                // Run comprehensive analytics
+                let analytics_engine = ComprehensiveAnalyticsEngine::new(home.clone());
+                let comprehensive = analytics_engine.analyze(&git_repos)?;
+
+                // Save full report
+                let report_file = output_dir.join(if timestamp {
+                    format!("comprehensive-analytics-{}.json", chrono::Utc::now().format("%Y%m%d-%H%M%S"))
+                } else {
+                    "comprehensive-analytics.json".to_string()
+                });
+
+                let json = serde_json::to_string_pretty(&comprehensive)?;
+                std::fs::write(&report_file, &json)?;
+
+                // Display human-readable analytics
+                println!("{}", "═══════════════════════════════════════════════════".cyan());
+                println!("{}", "           📊 YOUR PRODUCTIVITY ANALYSIS            ".cyan().bold());
+                println!("{}", "═══════════════════════════════════════════════════".cyan());
+                println!();
+
+                // Overall Score
+                let score = &comprehensive.overall_score;
+                let grade_color = match score.grade.as_str() {
+                    "A+" | "A" | "A-" => "green",
+                    "B+" | "B" | "B-" => "yellow",
+                    "C+" | "C" | "C-" => "magenta",
+                    _ => "red",
+                };
+
+                println!("{}", format!("🎯 Overall Productivity Score: {:.0}/100 (Grade: {})", score.overall, score.grade).color(grade_color).bold());
+                println!();
+                println!("{}", "  Breakdown:".yellow());
+                println!("    • AI Effectiveness:   {:.0}/100  (40% weight)", score.ai_effectiveness);
+                println!("    • Shell Efficiency:   {:.0}/100  (30% weight)", score.shell_efficiency);
+                println!("    • Workflow Quality:   {:.0}/100  (30% weight)", score.workflow_quality);
+                println!();
+
+                // AI Impact Summary
+                let ai = &comprehensive.ai_impact;
+                println!("{}", "🤖 AI Impact on Productivity".yellow().bold());
+                println!("    • AI-Assisted Commits: {} ({:.1}%)", ai.ai_assisted_commits.to_string().green(), ai.ai_assistance_rate);
+                println!("    • Velocity Improvement: {}{:.1}%", if ai.velocity_improvement > 0.0 { "+" } else { "" }, ai.velocity_improvement);
+                println!("    • Code Volume: {} lines with AI ({:.1}%)", ai.lines_written_with_ai.to_string().green(), ai.ai_contribution_percentage);
+                println!("    • Copy-Paste Incidents: {}", ai.copy_paste_incidents.to_string().red());
+                println!();
+
+                // Shell Productivity
+                let shell = &comprehensive.shell_productivity;
+                println!("{}", "🐚 Shell Command Analysis".yellow().bold());
+                println!("    • Total Commands: {}", shell.total_commands);
+                println!("    • Failure Rate: {:.1}%", shell.failure_rate);
+                println!("    • Time Wasted: {:.1} hours", shell.time_wasted_hours);
+                println!("    • Struggle Sessions: {}", shell.struggle_sessions.len());
+                println!("    • Productivity Score: {:.0}/100", shell.productivity_score);
+                println!();
+
+                // Workflow Patterns
+                let workflow = &comprehensive.workflow_patterns;
+                println!("{}", "🔗 Workflow Correlation Analysis".yellow().bold());
+                println!("    • Full Cycle Workflows: {} (Struggle → AI → Commit)", workflow.full_cycle_instances);
+                println!("    • AI Helpfulness Rate: {:.1}%", workflow.ai_helpfulness_rate);
+                println!("    • Shell → AI: {} instances", workflow.struggle_to_ai_instances);
+                println!("    • AI → Commit: {} instances", workflow.ai_to_commit_instances);
+                println!();
+
+                // Actionable Recommendations
+                println!("{}", "═══════════════════════════════════════════════════".cyan());
+                println!("{}", "           🎯 ACTIONABLE RECOMMENDATIONS            ".cyan().bold());
+                println!("{}", "═══════════════════════════════════════════════════".cyan());
+                println!();
+
+                if comprehensive.actionable_recommendations.is_empty() {
+                    println!("{}", "  ✨ Everything looks great! Keep up the good work!".green());
+                } else {
+                    for (idx, rec) in comprehensive.actionable_recommendations.iter().enumerate() {
+                        let priority_emoji = match rec.priority {
+                            Priority::Critical => "🔴",
+                            Priority::High => "🟠",
+                            Priority::Medium => "🟡",
+                            Priority::Low => "🟢",
+                        };
+                        let priority_text = match rec.priority {
+                            Priority::Critical => "CRITICAL".red(),
+                            Priority::High => "HIGH".yellow(),
+                            Priority::Medium => "MEDIUM".magenta(),
+                            Priority::Low => "LOW".green(),
+                        };
+
+                        println!("{} {} - {}", priority_emoji, priority_text.bold(), rec.category.cyan());
+                        println!("  Issue: {}", rec.issue);
+                        println!("  Action: {}", rec.action.green());
+                        println!("  Impact: {}", rec.potential_impact.yellow());
+
+                        if idx < comprehensive.actionable_recommendations.len() - 1 {
+                            println!();
+                        }
+                    }
+                }
+
+                println!();
+                println!("{}", "═══════════════════════════════════════════════════".cyan());
+                println!();
+                println!("  {} Full analysis saved: {}", "✓".green(), report_file.display());
+                println!();
+            }
 
             Ok(())
         }
@@ -1424,6 +1736,83 @@ async fn main() -> Result<()> {
                     println!("  start    - Start the daemon");
                     println!("  stop     - Stop the daemon");
                     println!("  restart  - Restart the daemon");
+                }
+            }
+
+            Ok(())
+        }
+
+        Commands::Timeline { base_dir, png, print, cluster, months, skip_noise } => {
+            use colored::Colorize;
+            use timeline::TimelineAnalyzer;
+            use timeline_png::export_timeline_png;
+
+            let base = base_dir
+                .unwrap_or_else(|| dirs::home_dir().expect("Could not determine home directory"));
+
+            info!("🔍 Analyzing coding journey timeline...");
+
+            let analyzer = TimelineAnalyzer::new(base);
+            let timeline = analyzer.analyze_with_options(months, cluster, skip_noise)?;
+
+            if timeline.sessions.is_empty() {
+                println!("{}", "No sessions found. Start coding to build your timeline!".yellow());
+                return Ok(());
+            }
+
+            // Print summary
+            println!("\n{}", "📅 Your Coding Journey Timeline".cyan().bold());
+            println!("═══════════════════════════════════════════════\n");
+            println!("  Total Sessions: {}", timeline.stats.total_sessions);
+            println!("  ✓ Completed: {} | ✗ Abandoned: {} | ↻ Resumed: {} | ● Ongoing: {}",
+                timeline.stats.completed.to_string().green(),
+                timeline.stats.abandoned.to_string().red(),
+                timeline.stats.resumed.to_string().yellow(),
+                timeline.stats.ongoing.to_string().cyan()
+            );
+            println!("  Completion Rate: {:.1}%", timeline.stats.completion_rate);
+            println!("  Avg Session: {:.1}h", timeline.stats.avg_session_hours);
+            println!("  Context Switches: {}", timeline.stats.context_switches);
+            println!("  Most Worked: {}", timeline.stats.most_worked_project.green());
+
+            if cluster {
+                println!("  {} Clustering enabled (2-hour windows)", "ℹ".cyan());
+            }
+            if let Some(m) = months {
+                println!("  {} Showing last {} months", "ℹ".cyan(), m);
+            }
+            if skip_noise {
+                println!("  {} Skipping shell/vim/tmux sessions", "ℹ".cyan());
+            }
+
+            if print {
+                println!("\n{}", "Recent Sessions:".cyan());
+                for session in timeline.sessions.iter().rev().take(20) {
+                    let outcome_symbol = session.outcome.symbol();
+                    let outcome_desc = session.outcome.description();
+                    println!(
+                        "  {} {} | {} | {:.1}h | {}",
+                        outcome_symbol,
+                        session.start.format("%Y-%m-%d").to_string().yellow(),
+                        session.project.cyan(),
+                        session.hours,
+                        outcome_desc
+                    );
+                    if !session.description.is_empty() {
+                        println!("     {}", session.description.dimmed());
+                    }
+                }
+            }
+
+            // Export to PNG
+            if let Some(png_path) = png {
+                println!("\n{} {}", "Generating PNG timeline:".cyan(), png_path.display());
+                export_timeline_png(&timeline, &png_path)?;
+                println!("{} Timeline exported!", "✅".green());
+
+                // Try to open in default viewer
+                if open::that(&png_path).is_err() {
+                    println!("   (Could not auto-open image - please open manually)");
                 }
             }
 
