@@ -1,16 +1,57 @@
 // Git Infographics Generator - Beautiful visualizations from git history
 use anyhow::Result;
 use chrono::{DateTime, Datelike, Duration, NaiveDate, Timelike};
+use fxhash::FxHashMap;
+use indicatif::{ProgressBar, ProgressStyle};
+use md5::{Md5, Digest};
 use plotters::prelude::*;
+use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use thiserror::Error;
 
 const CHART_WIDTH: u32 = 1200;
 const CHART_HEIGHT: u32 = 800;
 
+#[derive(Error, Debug)]
+pub enum InfographicsError {
+    #[error("Git repository not found: {0}")]
+    RepoNotFound(PathBuf),
+    #[error("Failed to parse git log: {0}")]
+    ParseError(String),
+    #[error("Failed to generate chart: {0}")]
+    ChartError(String),
+    #[error("IO error: {0}")]
+    IoError(#[from] std::io::Error),
+}
+
 #[derive(Debug, Clone)]
+pub struct InfographicsConfig {
+    pub chart_width: u32,
+    pub chart_height: u32,
+    pub top_n_contributors: usize,
+    pub use_cache: bool,
+    pub show_progress: bool,
+    pub charts: Option<Vec<String>>, // None = all charts
+}
+
+impl Default for InfographicsConfig {
+    fn default() -> Self {
+        Self {
+            chart_width: CHART_WIDTH,
+            chart_height: CHART_HEIGHT,
+            top_n_contributors: 15,
+            use_cache: false,
+            show_progress: false,
+            charts: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitCommit {
     pub hash: String,
     pub author: String,
@@ -22,7 +63,7 @@ pub struct GitCommit {
     pub files_changed: usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitStats {
     pub commits: Vec<GitCommit>,
     pub total_commits: usize,
@@ -56,21 +97,118 @@ impl GitStats {
 pub struct GitInfographicsGenerator {
     pub git_dirs: Vec<PathBuf>,
     pub output_dir: PathBuf,
+    pub config: InfographicsConfig,
 }
 
 impl GitInfographicsGenerator {
     pub fn new(git_dirs: Vec<PathBuf>, output_dir: PathBuf) -> Self {
-        Self { git_dirs, output_dir }
+        Self {
+            git_dirs,
+            output_dir,
+            config: InfographicsConfig::default(),
+        }
+    }
+
+    pub fn with_config(mut self, config: InfographicsConfig) -> Self {
+        self.config = config;
+        self
+    }
+
+    fn get_cache_path(&self) -> PathBuf {
+        let cache_dir = dirs::cache_dir()
+            .unwrap_or_else(|| PathBuf::from("/tmp"))
+            .join("vibedev")
+            .join("git-stats");
+        fs::create_dir_all(&cache_dir).ok();
+
+        // Hash repo paths for cache key
+        let repos_str = self
+            .git_dirs
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>()
+            .join(":");
+
+        let mut hasher = Md5::new();
+        hasher.update(repos_str.as_bytes());
+        let hash = format!("{:x}", hasher.finalize());
+
+        cache_dir.join(format!("{}.cache", hash))
+    }
+
+    fn load_cached_stats(&self) -> Option<GitStats> {
+        if !self.config.use_cache {
+            return None;
+        }
+
+        let cache_path = self.get_cache_path();
+        if !cache_path.exists() {
+            return None;
+        }
+
+        // Check if cache is fresh (< 1 hour old)
+        if let Ok(metadata) = fs::metadata(&cache_path) {
+            if let Ok(modified) = metadata.modified() {
+                if let Ok(elapsed) = modified.elapsed() {
+                    if elapsed.as_secs() > 3600 {
+                        return None; // Cache expired
+                    }
+                }
+            }
+        }
+
+        fs::read(&cache_path)
+            .ok()
+            .and_then(|data| bincode::deserialize(&data).ok())
+    }
+
+    fn save_cached_stats(&self, stats: &GitStats) -> Result<()> {
+        if !self.config.use_cache {
+            return Ok(());
+        }
+
+        let cache_path = self.get_cache_path();
+        let data = bincode::serialize(stats)?;
+        fs::write(&cache_path, data)?;
+        Ok(())
     }
 
     /// Collect git stats from multiple repositories
     pub fn collect_stats(&self) -> Result<GitStats> {
+        // Try cache first
+        if let Some(cached) = self.load_cached_stats() {
+            if self.config.show_progress {
+                println!("✓ Using cached statistics");
+            }
+            return Ok(cached);
+        }
+
+        let pb = if self.config.show_progress {
+            let pb = ProgressBar::new(self.git_dirs.len() as u64);
+            pb.set_style(
+                ProgressStyle::default_bar()
+                    .template("[{elapsed}] {bar:40.cyan/blue} {pos}/{len} repos {msg}")
+                    .unwrap()
+                    .progress_chars("=>-"),
+            );
+            Some(pb)
+        } else {
+            None
+        };
+
         let mut all_commits = Vec::new();
 
         for git_dir in &self.git_dirs {
             if let Ok(commits) = self.parse_git_log(git_dir) {
                 all_commits.extend(commits);
             }
+            if let Some(ref pb) = pb {
+                pb.inc(1);
+            }
+        }
+
+        if let Some(pb) = pb {
+            pb.finish_with_message("Done!");
         }
 
         if all_commits.is_empty() {
@@ -121,6 +259,9 @@ impl GitInfographicsGenerator {
         }
 
         stats.total_authors = stats.commits_by_author.len();
+
+        // Save to cache
+        self.save_cached_stats(&stats)?;
 
         Ok(stats)
     }
@@ -189,41 +330,100 @@ impl GitInfographicsGenerator {
     pub fn generate_all(&self, stats: &GitStats) -> Result<Vec<PathBuf>> {
         fs::create_dir_all(&self.output_dir)?;
 
+        let pb = if self.config.show_progress {
+            let pb = ProgressBar::new(7);
+            pb.set_style(
+                ProgressStyle::default_bar()
+                    .template("[{elapsed}] {bar:40.green/blue} {pos}/{len} charts {msg}")
+                    .unwrap()
+                    .progress_chars("█▓▒░"),
+            );
+            Some(pb)
+        } else {
+            None
+        };
+
         let mut generated = Vec::new();
 
         // 1. Commit heatmap (calendar view)
+        if let Some(ref pb) = pb {
+            pb.set_message("commit_heatmap");
+        }
         if let Ok(path) = self.generate_commit_heatmap(stats) {
             generated.push(path);
         }
+        if let Some(ref pb) = pb {
+            pb.inc(1);
+        }
 
         // 2. Top contributors bar chart
+        if let Some(ref pb) = pb {
+            pb.set_message("top_contributors");
+        }
         if let Ok(path) = self.generate_top_contributors(stats) {
             generated.push(path);
         }
+        if let Some(ref pb) = pb {
+            pb.inc(1);
+        }
 
         // 3. Activity timeline
+        if let Some(ref pb) = pb {
+            pb.set_message("activity_timeline");
+        }
         if let Ok(path) = self.generate_activity_timeline(stats) {
             generated.push(path);
         }
+        if let Some(ref pb) = pb {
+            pb.inc(1);
+        }
 
         // 4. Hourly activity heatmap
+        if let Some(ref pb) = pb {
+            pb.set_message("hourly_activity");
+        }
         if let Ok(path) = self.generate_hourly_heatmap(stats) {
             generated.push(path);
         }
+        if let Some(ref pb) = pb {
+            pb.inc(1);
+        }
 
         // 5. Weekday distribution
+        if let Some(ref pb) = pb {
+            pb.set_message("weekday_distribution");
+        }
         if let Ok(path) = self.generate_weekday_distribution(stats) {
             generated.push(path);
         }
+        if let Some(ref pb) = pb {
+            pb.inc(1);
+        }
 
         // 6. Commit message quality
+        if let Some(ref pb) = pb {
+            pb.set_message("message_quality");
+        }
         if let Ok(path) = self.generate_message_quality(stats) {
             generated.push(path);
         }
+        if let Some(ref pb) = pb {
+            pb.inc(1);
+        }
 
         // 7. Code contribution (lines added/deleted)
+        if let Some(ref pb) = pb {
+            pb.set_message("code_contribution");
+        }
         if let Ok(path) = self.generate_code_contribution(stats) {
             generated.push(path);
+        }
+        if let Some(ref pb) = pb {
+            pb.inc(1);
+        }
+
+        if let Some(pb) = pb {
+            pb.finish_with_message("Complete!");
         }
 
         Ok(generated)

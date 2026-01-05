@@ -367,6 +367,14 @@ enum Commands {
         /// Scan home directory for all git repos
         #[arg(long)]
         scan_all: bool,
+
+        /// Use cached statistics (if available, expires after 1 hour)
+        #[arg(long)]
+        cached: bool,
+
+        /// Show progress bars during generation
+        #[arg(long)]
+        progress: bool,
     },
 }
 
@@ -1839,9 +1847,9 @@ async fn main() -> Result<()> {
             Ok(())
         }
 
-        Commands::GitInfographics { repos, output, open, scan_all } => {
+        Commands::GitInfographics { repos, output, open, scan_all, cached, progress } => {
             use colored::Colorize;
-            use git_infographics::GitInfographicsGenerator;
+            use git_infographics::{GitInfographicsGenerator, InfographicsConfig};
             use walkdir::WalkDir;
 
             info!("📊 Generating git infographics...");
@@ -1879,9 +1887,18 @@ async fn main() -> Result<()> {
             fs::create_dir_all(&output_dir)?;
 
             // Generate infographics
-            let generator = GitInfographicsGenerator::new(git_repos.clone(), output_dir.clone());
+            let config = InfographicsConfig {
+                use_cache: cached,
+                show_progress: progress,
+                ..Default::default()
+            };
 
-            println!("{}", "\n📈 Collecting git statistics...".cyan());
+            let generator = GitInfographicsGenerator::new(git_repos.clone(), output_dir.clone())
+                .with_config(config);
+
+            if !progress {
+                println!("{}", "\n📈 Collecting git statistics...".cyan());
+            }
             let stats = generator.collect_stats()?;
 
             if stats.total_commits == 0 {
@@ -1889,14 +1906,15 @@ async fn main() -> Result<()> {
                 return Ok(());
             }
 
-            println!("  Total Commits: {}", stats.total_commits.to_string().green());
-            println!("  Total Authors: {}", stats.total_authors.to_string().green());
-            println!("  Date Range: {} to {}",
-                stats.date_range.0.to_string().yellow(),
-                stats.date_range.1.to_string().yellow()
-            );
-
-            println!("{}", "\n🎨 Generating infographics...".cyan());
+            if !progress {
+                println!("  Total Commits: {}", stats.total_commits.to_string().green());
+                println!("  Total Authors: {}", stats.total_authors.to_string().green());
+                println!("  Date Range: {} to {}",
+                    stats.date_range.0.to_string().yellow(),
+                    stats.date_range.1.to_string().yellow()
+                );
+                println!("{}", "\n🎨 Generating infographics...".cyan());
+            }
             let generated = generator.generate_all(&stats)?;
 
             println!("\n{}", "✅ Infographics generated successfully!".green().bold());
