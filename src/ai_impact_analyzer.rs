@@ -3,7 +3,7 @@ use anyhow::Result;
 use chrono::{DateTime, Duration, Timelike, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AIPairProgrammingSession {
@@ -109,7 +109,7 @@ impl AIImpactAnalyzer {
         }
     }
 
-    pub fn load_claude_conversations(&mut self, claude_dir: &PathBuf) -> Result<()> {
+    pub fn load_claude_conversations(&mut self, claude_dir: &Path) -> Result<()> {
         use serde_json::Value;
         use std::fs;
 
@@ -124,7 +124,7 @@ impl AIImpactAnalyzer {
 
             if history_file.exists() {
                 let content = fs::read_to_string(&history_file)?;
-                let mut current_conversation: Option<ClaudeConversation> = None;
+                let _current_conversation: Option<ClaudeConversation> = None;
                 let mut message_count = 0;
                 let mut tool_use_count = 0;
                 let mut file_op_count = 0;
@@ -193,7 +193,7 @@ impl AIImpactAnalyzer {
             let output = Command::new("git")
                 .arg("-C")
                 .arg(repo)
-                .args(&[
+                .args([
                     "log",
                     "--all",
                     "--numstat",
@@ -254,7 +254,7 @@ impl AIImpactAnalyzer {
                             files_changed += 1;
 
                             // Detect language from extension
-                            if let Some(ext) = filename.split('.').last() {
+                            if let Some(ext) = filename.split('.').next_back() {
                                 let lang = match ext {
                                     "rs" => "Rust",
                                     "js" | "jsx" => "JavaScript",

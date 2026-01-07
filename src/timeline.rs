@@ -63,7 +63,9 @@ pub struct TimelineStats {
     pub ongoing: usize,
     pub completion_rate: f64,
     pub avg_session_hours: f64,
+    #[allow(dead_code)]
     pub avg_abandonment_days: f64,
+    #[allow(dead_code)]
     pub longest_gap_days: i64,
     pub most_worked_project: String,
     pub context_switches: usize,
@@ -199,8 +201,7 @@ impl TimelineAnalyzer {
 
         let cluster_window = Duration::hours(2); // Sessions within 2 hours = same cluster
 
-        for i in 1..sessions.len() {
-            let session = &sessions[i];
+        for session in sessions.iter().skip(1) {
             let last = current_cluster.last().unwrap();
 
             // Same project and within time window?
@@ -912,8 +913,7 @@ impl TimelineAnalyzer {
             if is_ai_session {
                 // Check if resumed in a later session
                 let mut resumed_at = None;
-                for j in (i + 1)..sessions.len() {
-                    let other = &sessions[j];
+                for other in sessions.iter().skip(i + 1) {
                     let gap_days = (other.start - session.end).num_days();
 
                     // Only consider it a resume if gap > 7 days and related
@@ -1456,7 +1456,7 @@ impl TimelineAnalyzer {
 
                             let commit_time =
                                 DateTime::from_timestamp(timestamp, 0).unwrap_or(Utc::now());
-                            let end_time = commit_time + Duration::minutes(30); // Estimate 30min per commit
+                            let _end_time = commit_time + Duration::minutes(30); // Estimate 30min per commit
 
                             let repo_name = repo_path
                                 .file_name()

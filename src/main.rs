@@ -510,7 +510,7 @@ async fn main() -> Result<()> {
     } else {
         OutputMode::auto()
     };
-    let out = OutputWriter::new(output_mode);
+    let _out = OutputWriter::new(output_mode);
 
     match cli.command {
         Commands::Discover { base_dir, hidden } => {
@@ -598,7 +598,7 @@ async fn main() -> Result<()> {
                     };
 
                     std::process::Command::new("tar")
-                        .args(&[
+                        .args([
                             "-czf",
                             claude_archive.to_str().unwrap(),
                             "-C",
@@ -646,7 +646,7 @@ async fn main() -> Result<()> {
                     let output = std::process::Command::new("git")
                         .arg("-C")
                         .arg(repo)
-                        .args(&[
+                        .args([
                             "log",
                             "--all",
                             "--pretty=format:%H|%an|%ae|%at|%s",
@@ -672,7 +672,7 @@ async fn main() -> Result<()> {
                 };
 
                 std::process::Command::new("tar")
-                    .args(&[
+                    .args([
                         "-czf",
                         git_archive.to_str().unwrap(),
                         "-C",
@@ -725,7 +725,7 @@ async fn main() -> Result<()> {
                     };
 
                     std::process::Command::new("tar")
-                        .args(&[
+                        .args([
                             "-czf",
                             history_archive.to_str().unwrap(),
                             "-C",

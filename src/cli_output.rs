@@ -31,6 +31,7 @@ impl OutputMode {
 }
 
 /// Structured progress update
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProgressUpdate {
     pub stage: String,
@@ -41,6 +42,7 @@ pub struct ProgressUpdate {
     pub status: ProgressStatus,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ProgressStatus {
@@ -52,6 +54,7 @@ pub enum ProgressStatus {
 }
 
 /// Structured result for agent consumption
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommandResult {
     pub success: bool,
@@ -67,6 +70,7 @@ pub struct OutputWriter {
     mode: OutputMode,
 }
 
+#[allow(dead_code)]
 impl OutputWriter {
     pub fn new(mode: OutputMode) -> Self {
         Self { mode }
@@ -295,6 +299,7 @@ impl OutputWriter {
 }
 
 /// Format duration in human-readable form
+#[allow(dead_code)]
 pub fn format_duration(seconds: u64) -> String {
     if seconds < 60 {
         format!("{}s", seconds)
@@ -306,6 +311,7 @@ pub fn format_duration(seconds: u64) -> String {
 }
 
 /// Format file size in human-readable form
+#[allow(dead_code)]
 pub fn format_size(bytes: u64) -> String {
     const KB: u64 = 1024;
     const MB: u64 = KB * 1024;

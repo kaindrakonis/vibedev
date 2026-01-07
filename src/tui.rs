@@ -74,6 +74,7 @@ pub struct App {
     pub paused: bool,
     pub selected_tab: usize,
     pub hourly_activity: [u64; 24],
+    #[allow(dead_code)]
     pub start_time: Instant,
     pub current_branch: String,
     pub scroll_offset: usize,
@@ -155,7 +156,7 @@ impl App {
 
     fn update_git_context(&mut self) {
         if let Ok(output) = std::process::Command::new("git")
-            .args(&["branch", "--show-current"])
+            .args(["branch", "--show-current"])
             .current_dir(&self.base_dir)
             .output()
         {

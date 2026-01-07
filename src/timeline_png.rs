@@ -3,7 +3,7 @@ use crate::timeline::{SessionOutcome, Timeline};
 use anyhow::Result;
 use chrono::{DateTime, Datelike, Utc};
 use plotters::prelude::*;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 const WIDTH: u32 = 2400;
 const HEIGHT: u32 = 1600;
@@ -181,7 +181,7 @@ impl TimelinePngRenderer {
             timeline.sessions.clone()
         };
 
-        let bar_height = (chart_height / num_sessions as i32).max(3).min(20);
+        let bar_height = (chart_height / num_sessions as i32).clamp(3, 20);
 
         // Draw sessions
         for (idx, session) in sessions_to_show.iter().enumerate() {
@@ -255,8 +255,8 @@ impl TimelinePngRenderer {
     }
 }
 
-pub fn export_timeline_png(timeline: &Timeline, output_path: &PathBuf) -> Result<()> {
-    let renderer = TimelinePngRenderer::new(output_path.clone());
+pub fn export_timeline_png(timeline: &Timeline, output_path: &Path) -> Result<()> {
+    let renderer = TimelinePngRenderer::new(output_path.to_path_buf());
     renderer.render(timeline)?;
     Ok(())
 }

@@ -2,7 +2,7 @@
 use anyhow::Result;
 use regex::Regex;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub struct HistorySanitizer {
     patterns: Vec<(Regex, &'static str)>,
@@ -91,7 +91,7 @@ impl HistorySanitizer {
     }
 
     /// Find and sanitize all shell history files
-    pub fn find_and_sanitize_history(&self, home_dir: &PathBuf) -> Result<Vec<(String, String)>> {
+    pub fn find_and_sanitize_history(&self, home_dir: &Path) -> Result<Vec<(String, String)>> {
         let mut histories = Vec::new();
 
         // Common shell history locations

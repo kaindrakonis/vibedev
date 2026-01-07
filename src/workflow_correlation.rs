@@ -249,7 +249,7 @@ impl WorkflowAnalyzer {
 
                     examples.push(WorkflowExample {
                         timestamp: struggle.timestamp,
-                        trigger: format!("Struggle → Claude → Commit"),
+                        trigger: "Struggle → Claude → Commit".to_string(),
                         ai_intervention: true,
                         outcome: "Full resolution".to_string(),
                         duration_minutes: total_duration,

@@ -14,6 +14,7 @@ use thiserror::Error;
 const CHART_WIDTH: u32 = 1200;
 const CHART_HEIGHT: u32 = 800;
 
+#[allow(dead_code)]
 #[derive(Error, Debug)]
 pub enum InfographicsError {
     #[error("Git repository not found: {0}")]
@@ -26,6 +27,7 @@ pub enum InfographicsError {
     IoError(#[from] std::io::Error),
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct InfographicsConfig {
     pub chart_width: u32,
@@ -277,7 +279,7 @@ impl GitInfographicsGenerator {
     fn parse_git_log(&self, git_dir: &Path) -> Result<Vec<GitCommit>> {
         let output = Command::new("git")
             .current_dir(git_dir)
-            .args(&[
+            .args([
                 "log",
                 "--all",
                 "--numstat",
@@ -447,7 +449,7 @@ impl GitInfographicsGenerator {
 
         let (start_date, end_date) = stats.date_range;
         let days = (end_date - start_date).num_days() as usize + 1;
-        let weeks = (days + 6) / 7;
+        let weeks = days.div_ceil(7);
 
         // Find max commits per day for color scaling
         let max_commits = stats.commits_by_date.values().max().copied().unwrap_or(1);
@@ -620,9 +622,7 @@ impl GitInfographicsGenerator {
                 .map(|(i, &&key)| (i, monthly_commits[&key])),
             5,
             &RED,
-            &|c, s, st| {
-                return EmptyElement::at(c) + Circle::new((0, 0), s, st.filled());
-            },
+            &|c, s, st| EmptyElement::at(c) + Circle::new((0, 0), s, st.filled()),
         ))?;
 
         root.present()?;
@@ -723,7 +723,7 @@ impl GitInfographicsGenerator {
         root.fill(&WHITE)?;
 
         // Bucket message lengths
-        let mut buckets = vec![0; 10]; // <10, 10-20, 20-30, ..., 80-90, 90+
+        let mut buckets = [0; 10]; // <10, 10-20, 20-30, ..., 80-90, 90+
         for &len in &stats.message_lengths {
             let bucket = (len / 10).min(9);
             buckets[bucket] += 1;
@@ -757,7 +757,7 @@ impl GitInfographicsGenerator {
             // Color code: red for too short, green for optimal (50-72), yellow otherwise
             let color = if i < 5 {
                 RED.mix(0.7) // Too short
-            } else if i >= 5 && i <= 7 {
+            } else if (5..=7).contains(&i) {
                 GREEN.mix(0.7) // Optimal
             } else {
                 YELLOW.mix(0.7) // Too long
