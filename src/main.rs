@@ -1844,7 +1844,7 @@ async fn main() -> Result<()> {
                         claude_config::ClaudeConfig::custom(custom_endpoint, key, custom_model)
                     } else {
                         let mut cfg = claude_config::ClaudeConfig::new(provider_enum.clone(), key);
-                        
+
                         // Override with custom values if provided
                         if let Some(custom_endpoint) = endpoint {
                             cfg.endpoint = custom_endpoint;
