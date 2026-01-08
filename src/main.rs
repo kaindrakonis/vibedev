@@ -43,6 +43,7 @@ mod timeline;
 mod timeline_png;
 mod tui;
 mod ultra_deep;
+mod ascii_charts;
 
 use analysis::Analyzer;
 use backup::BackupManager;
@@ -407,6 +408,9 @@ enum Commands {
         #[arg(long)]
         progress: bool,
     },
+
+    /// Demo beautiful ASCII charts (showcase all visualization types)
+    DemoCharts,
 }
 
 /// Load analysis data from a directory (JSON files, reports, datasets)
@@ -2256,6 +2260,172 @@ async fn main() -> Result<()> {
                 "\n{}",
                 "💡 Tip: Use --scan-all to analyze all repos in your home directory".dimmed()
             );
+
+            Ok(())
+        }
+
+        Commands::DemoCharts => {
+            use ascii_charts::*;
+            use chrono::Utc;
+            use colored::Colorize;
+
+            println!("\n{}", "═══════════════════════════════════════════════════════════════".cyan());
+            println!("{}", "  🎨 vibedev ASCII Charts Demo - Beautiful Terminal Visualizations".cyan().bold());
+            println!("{}", "═══════════════════════════════════════════════════════════════".cyan());
+
+            // 1. Activity Heatmap (GitHub-style)
+            println!("\n{}", "━━━ Activity Heatmap (GitHub-style Contribution Graph) ━━━".yellow().bold());
+            let mut heatmap = ActivityHeatmap::new().with_weeks(52);
+            // Simulate activity data
+            for week in 40..52 {
+                for day in 0..7 {
+                    let intensity = if week > 45 && (day == 1 || day == 3 || day == 5) {
+                        3.0 + (week as f64 - 45.0) * 0.5
+                    } else if week > 48 {
+                        2.0
+                    } else {
+                        0.0
+                    };
+                    heatmap.set(week, day, intensity);
+                }
+            }
+            print!("{}", heatmap.render());
+
+            // 2. Stats Card
+            println!("\n{}", "━━━ Stats Card ━━━".yellow().bold());
+            let mut stats_card = StatsCard::new();
+            stats_card.add_row(vec![
+                ("Favorite model", "Sonnet 4.5"),
+                ("Total tokens", "47.1m"),
+            ]);
+            stats_card.add_row(vec![
+                ("Sessions", "234"),
+                ("Longest session", "17d 21h 57m"),
+            ]);
+            stats_card.add_row(vec![
+                ("Current streak", "19 days"),
+                ("Longest streak", "20 days"),
+            ]);
+            stats_card.add_row(vec![
+                ("Active days", "52/74"),
+                ("Peak hour", "8:00-9:00"),
+            ]);
+            print!("{}", stats_card.render());
+
+            // 3. Fun Fact
+            println!("\n{}", "━━━ Fun Fact ━━━".yellow().bold());
+            let fun_fact = FunFact::token_comparison(47_100_000);
+            print!("{}", fun_fact.render());
+            println!("  {}", "Stats from the last 74 days".dimmed());
+
+            // 4. Streak Counter
+            println!("\n{}", "━━━ Streak Counter ━━━".yellow().bold());
+            let streak = StreakCounter::new(19, 20)
+                .with_activity(52, 74)
+                .with_peak("8:00-9:00");
+            print!("{}", streak.render());
+
+            // 5. Tool Breakdown
+            println!("\n{}", "━━━ Tool Breakdown ━━━".yellow().bold());
+            let mut tools = ToolBreakdown::new();
+            tools.add("Claude Code", 57.7, 2_900_000, 24_300_000, "cyan");
+            tools.add("Cursor", 40.2, 2_900_000, 16_000_000, "magenta");
+            tools.add("Cline", 2.1, 5_000, 986_500, "yellow");
+            tools.add("Copilot", 0.0, 3_200, 15_800, "green");
+            print!("{}", tools.render());
+
+            // 6. Bar Chart
+            println!("\n{}", "━━━ Bar Chart ━━━".yellow().bold());
+            let mut bar_chart = BarChart::new("Token Usage by Project");
+            bar_chart.add_with_detail("vibedev", 12_500_000.0, "AI log analyzer", "cyan");
+            bar_chart.add_with_detail("opensvm-cli", 8_300_000.0, "Solana VM CLI", "magenta");
+            bar_chart.add_with_detail("website", 4_200_000.0, "Portfolio site", "yellow");
+            bar_chart.add_with_detail("scripts", 1_800_000.0, "Automation", "green");
+            print!("{}", bar_chart.render());
+
+            // 7. Histogram
+            println!("\n{}", "━━━ Histogram (Session Duration) ━━━".yellow().bold());
+            let session_durations: Vec<f64> = vec![
+                0.5, 1.0, 1.2, 1.5, 2.0, 2.1, 2.3, 2.5, 2.8, 3.0,
+                3.2, 3.5, 4.0, 4.5, 5.0, 6.0, 7.0, 8.0, 10.0, 12.0,
+            ];
+            let histogram = Histogram::from_values("Session Duration (hours)", &session_durations, 6);
+            print!("{}", histogram.render());
+
+            // 8. Leaderboard
+            println!("\n{}", "━━━ Leaderboard (Top Projects) ━━━".yellow().bold());
+            let mut leaderboard = Leaderboard::new("Most Active Projects");
+            leaderboard.add_with_badge("vibedev", 12_500_000.0, "🔥");
+            leaderboard.add("opensvm-cli", 8_300_000.0);
+            leaderboard.add("website", 4_200_000.0);
+            leaderboard.add("scripts", 1_800_000.0);
+            leaderboard.add("dotfiles", 500_000.0);
+            print!("{}", leaderboard.render());
+
+            // 9. Progress Bars
+            println!("\n{}", "━━━ Progress Bars (Goals) ━━━".yellow().bold());
+            println!("{}", ProgressBar::new("Daily token goal", 45_000.0, 50_000.0).render());
+            println!("{}", ProgressBar::new("Weekly sessions", 28.0, 35.0).render());
+            println!("{}", ProgressBar::new("Monthly commits", 156.0, 100.0).render());
+
+            // 10. Calendar View
+            println!("\n{}", "━━━ Calendar View ━━━".yellow().bold());
+            let mut calendar = CalendarView::new(2026, 1);
+            // Add some activity
+            for day in [1, 2, 3, 5, 6, 7, 8].iter() {
+                calendar.set(*day, 1.0 + (*day as f64 * 0.1));
+            }
+            print!("{}", calendar.render());
+
+            // 11. Time Distribution
+            println!("\n{}", "━━━ Time Distribution ━━━".yellow().bold());
+            let mut time_dist = TimeDistribution::new("Coding Activity by Hour");
+            // Peak hours 8-11, 14-17
+            for h in 6..12 {
+                time_dist.set(h, if h >= 8 && h <= 11 { 4.0 } else { 1.0 });
+            }
+            for h in 12..18 {
+                time_dist.set(h, if h >= 14 && h <= 17 { 3.5 } else { 1.5 });
+            }
+            for h in 18..24 {
+                time_dist.set(h, if h >= 20 && h <= 22 { 2.0 } else { 0.5 });
+            }
+            print!("{}", time_dist.render());
+
+            // 12. Comparison Chart
+            println!("\n{}", "━━━ Comparison Chart ━━━".yellow().bold());
+            let comparison = ComparisonChart::new("Input tokens", 5_800_000.0, "Output tokens", 40_300_000.0)
+                .with_unit("tokens");
+            print!("{}", comparison.render());
+
+            // 13. Sparkline
+            println!("\n{}", "━━━ Sparklines ━━━".yellow().bold());
+            let daily_tokens: Vec<f64> = vec![
+                1.2, 2.3, 3.1, 2.8, 4.2, 3.7, 3.2, 2.6, 2.1, 1.6, 1.1, 0.5, 0.8, 1.2, 1.6, 2.1,
+            ];
+            let spark = Sparkline::new(&daily_tokens);
+            println!("  Token trend: {}", spark.render_colored("cyan"));
+
+            let session_counts: Vec<f64> = vec![5.0, 8.0, 12.0, 9.0, 15.0, 18.0, 14.0, 20.0];
+            let spark2 = Sparkline::new(&session_counts);
+            println!("  Sessions:    {}", spark2.render_colored("green"));
+
+            // 14. Line Chart demo (simplified)
+            println!("\n{}", "━━━ Line Chart ━━━".yellow().bold());
+            let mut line_chart = LineChart::new("Tokens per Day").with_size(50, 6);
+            let mut series = Series::new("Tokens", "cyan");
+            let now = Utc::now();
+            for i in 0..14 {
+                let date = now - chrono::Duration::days(14 - i);
+                let value = 1_000_000.0 + (i as f64 * 200_000.0) + ((i as f64).sin() * 500_000.0);
+                series.add(date, value);
+            }
+            line_chart.add_series(series);
+            print!("{}", line_chart.render());
+
+            println!("\n{}", "═══════════════════════════════════════════════════════════════".cyan());
+            println!("{}", "  Use these visualizations in your TUI with 'vibedev tui'".dimmed());
+            println!("{}", "═══════════════════════════════════════════════════════════════".cyan());
 
             Ok(())
         }
