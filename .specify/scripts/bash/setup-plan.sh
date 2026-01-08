@@ -28,17 +28,10 @@ SCRIPT_DIR="$(CDPATH="" cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
 # Get all paths and variables from common functions without using eval
-while IFS='=' read -r key value; do
-  # Skip empty lines
-  [ -z "$key" ] && continue
-
-  # Strip a single pair of surrounding single quotes from the value, if present
-  if [[ "$value" == \'*\' ]]; then
-    value=${value:1:-1}
-  fi
-
-  # Assign the value to the variable named by $key without evaluation
-  printf -v "$key" '%s' "$value"
+while IFS= read -r line; do
+    key=${line%%=*}
+    value=${line#*=}
+    printf -v "$key" '%s' "$value"
 done < <(get_feature_paths)
 
 # Check if we're on a proper feature branch (only for git repos)
