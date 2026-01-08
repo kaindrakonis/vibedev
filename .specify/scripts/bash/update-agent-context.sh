@@ -52,8 +52,19 @@ set -o pipefail
 SCRIPT_DIR="$(CDPATH="" cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
-# Get all paths and variables from common functions
-eval $(get_feature_paths)
+# Get all paths and variables from common functions without using eval
+while IFS='=' read -r key value; do
+  # Skip empty lines
+  [ -z "$key" ] && continue
+
+  # Strip a single pair of surrounding single quotes from the value, if present
+  if [[ "$value" == \'*\' ]]; then
+    value=${value:1:-1}
+  fi
+
+  # Assign the value to the variable named by $key without evaluation
+  printf -v "$key" '%s' "$value"
+done < <(get_feature_paths)
 
 NEW_PLAN="$IMPL_PLAN"  # Alias for compatibility with existing code
 AGENT_TYPE="${1:-}"
