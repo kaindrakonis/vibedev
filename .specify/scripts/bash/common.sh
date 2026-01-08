@@ -161,11 +161,15 @@ load_feature_paths() {
         # Skip empty lines
         [ -z "$line" ] && continue
         
+        # Declare variables before case statement for proper scope
+        local var_name
+        local raw_value
+        
         # Expect lines of the form NAME='value'
         case "$line" in
             *=*)
-                local var_name=${line%%=*}
-                local raw_value=${line#*=}
+                var_name=${line%%=*}
+                raw_value=${line#*=}
                 ;;
             *)
                 # Ignore malformed lines
@@ -174,7 +178,7 @@ load_feature_paths() {
         esac
         
         # Strip a single pair of surrounding single quotes, if present
-        if [[ $raw_value == \'*\' ]]; then
+        if [[ "$raw_value" == \'*\' ]]; then
             raw_value=${raw_value:1:-1}
         fi
         
