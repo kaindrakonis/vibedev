@@ -2577,6 +2577,868 @@ impl MetricCard {
     }
 }
 
+// ═══════════════════════════════════════════════════════════════
+// CREATIVE INSIGHT VISUALIZATIONS
+// ═══════════════════════════════════════════════════════════════
+
+/// MoodRing - Circular emotional state visualization based on coding patterns
+/// Shows frustration vs flow state based on retry counts, error frequency, etc.
+pub struct MoodRing {
+    pub title: String,
+    pub frustration_score: f64,  // 0-100
+    pub flow_score: f64,         // 0-100
+    pub energy_score: f64,       // 0-100
+    pub focus_score: f64,        // 0-100
+}
+
+impl MoodRing {
+    pub fn new(title: &str) -> Self {
+        Self {
+            title: title.to_string(),
+            frustration_score: 0.0,
+            flow_score: 0.0,
+            energy_score: 0.0,
+            focus_score: 0.0,
+        }
+    }
+
+    pub fn set_scores(&mut self, frustration: f64, flow: f64, energy: f64, focus: f64) {
+        self.frustration_score = frustration.clamp(0.0, 100.0);
+        self.flow_score = flow.clamp(0.0, 100.0);
+        self.energy_score = energy.clamp(0.0, 100.0);
+        self.focus_score = focus.clamp(0.0, 100.0);
+    }
+
+    pub fn render(&self) -> String {
+        let mut output = String::new();
+        output.push_str(&format!("  {}\n\n", self.title.bold()));
+
+        // Calculate dominant mood
+        let moods = [
+            (self.flow_score, "Flow", "green", "In the zone"),
+            (self.focus_score, "Focus", "cyan", "Deep concentration"),
+            (self.energy_score, "Energy", "yellow", "High activity"),
+            (self.frustration_score, "Frustration", "red", "Struggling"),
+        ];
+
+        let dominant = moods.iter().max_by(|a, b| a.0.partial_cmp(&b.0).unwrap()).unwrap();
+
+        // ASCII mood ring
+        let ring_color = match dominant.2 {
+            "green" => "🟢",
+            "cyan" => "🔵",
+            "yellow" => "🟡",
+            "red" => "🔴",
+            _ => "⚪",
+        };
+
+        // Draw concentric ring visualization
+        output.push_str("         ╭─────────────╮\n");
+        output.push_str("       ╭─┘             └─╮\n");
+        output.push_str(&format!("      │    {}  {}      │\n", ring_color, ring_color));
+        output.push_str(&format!("     │                   │\n"));
+        output.push_str(&format!("     │   {:^13}   │\n", dominant.1.bold()));
+        output.push_str(&format!("     │   {:^13}   │\n", format!("{:.0}%", dominant.0)));
+        output.push_str(&format!("     │                   │\n"));
+        output.push_str(&format!("      │    {}  {}      │\n", ring_color, ring_color));
+        output.push_str("       ╰─╮             ╭─╯\n");
+        output.push_str("         ╰─────────────╯\n\n");
+
+        // Mood breakdown bars
+        output.push_str(&format!("  {} ", "Flow".green()));
+        let flow_bar = "█".repeat((self.flow_score / 5.0) as usize);
+        let flow_empty = "░".repeat(20 - (self.flow_score / 5.0) as usize);
+        output.push_str(&format!("{}{} {:.0}%\n", flow_bar.green(), flow_empty, self.flow_score));
+
+        output.push_str(&format!("  {} ", "Focus".cyan()));
+        let focus_bar = "█".repeat((self.focus_score / 5.0) as usize);
+        let focus_empty = "░".repeat(20 - (self.focus_score / 5.0) as usize);
+        output.push_str(&format!("{}{} {:.0}%\n", focus_bar.cyan(), focus_empty, self.focus_score));
+
+        output.push_str(&format!("  {} ", "Energy".yellow()));
+        let energy_bar = "█".repeat((self.energy_score / 5.0) as usize);
+        let energy_empty = "░".repeat(20 - (self.energy_score / 5.0) as usize);
+        output.push_str(&format!("{}{} {:.0}%\n", energy_bar.yellow(), energy_empty, self.energy_score));
+
+        output.push_str(&format!("  {} ", "Stress".red()));
+        let frust_bar = "█".repeat((self.frustration_score / 5.0) as usize);
+        let frust_empty = "░".repeat(20 - (self.frustration_score / 5.0) as usize);
+        output.push_str(&format!("{}{} {:.0}%\n", frust_bar.red(), frust_empty, self.frustration_score));
+
+        output.push_str(&format!("\n  💭 {}\n", dominant.3));
+
+        output
+    }
+}
+
+/// CodePulse - ECG/heartbeat style visualization of coding activity rhythm
+/// Shows bursts of activity like a heartbeat monitor
+pub struct CodePulse {
+    pub title: String,
+    pub data: Vec<f64>,  // Activity intensity over time
+    pub heart_rate: u32, // Calculated "coding heart rate"
+}
+
+impl CodePulse {
+    pub fn new(title: &str) -> Self {
+        Self {
+            title: title.to_string(),
+            data: Vec::new(),
+            heart_rate: 0,
+        }
+    }
+
+    pub fn set_data(&mut self, data: Vec<f64>) {
+        // Calculate heart rate from peaks
+        let peaks = data.windows(3)
+            .filter(|w| w[1] > w[0] && w[1] > w[2])
+            .count();
+        self.heart_rate = (peaks as f64 * 10.0) as u32;
+        self.data = data;
+    }
+
+    pub fn render(&self) -> String {
+        let mut output = String::new();
+        output.push_str(&format!("  {}\n\n", self.title.bold()));
+
+        if self.data.is_empty() {
+            output.push_str("  No pulse data\n");
+            return output;
+        }
+
+        let max_val = self.data.iter().cloned().fold(0.0_f64, f64::max).max(1.0);
+        let height = 6;
+        let width = self.data.len().min(60);
+
+        // Resample data if needed
+        let data: Vec<f64> = if self.data.len() > width {
+            (0..width)
+                .map(|i| {
+                    let idx = i * self.data.len() / width;
+                    self.data[idx]
+                })
+                .collect()
+        } else {
+            self.data.clone()
+        };
+
+        // ECG-style rendering with proper heartbeat shape
+        for row in 0..height {
+            let threshold = (height - row) as f64 / height as f64 * max_val;
+            output.push_str("  │");
+            for (_i, &val) in data.iter().enumerate() {
+                let normalized = val / max_val;
+                let row_pos = (height - row) as f64 / height as f64;
+
+                // Create ECG spike pattern
+                let char = if (normalized - row_pos).abs() < 0.1 {
+                    if normalized > 0.7 { "╱" } else if normalized > 0.3 { "─" } else { "╲" }
+                } else if val >= threshold {
+                    if row == height - 1 { "▄" } else { " " }
+                } else {
+                    " "
+                };
+
+                let colored = if normalized > 0.8 {
+                    char.red().to_string()
+                } else if normalized > 0.5 {
+                    char.yellow().to_string()
+                } else {
+                    char.green().to_string()
+                };
+                output.push_str(&colored);
+            }
+            output.push_str("│\n");
+        }
+
+        // Baseline
+        output.push_str("  └");
+        output.push_str(&"─".repeat(data.len()));
+        output.push_str("┘\n");
+
+        // Heart rate display
+        let hr_color = if self.heart_rate > 100 {
+            format!("{} BPM", self.heart_rate).red()
+        } else if self.heart_rate > 60 {
+            format!("{} BPM", self.heart_rate).yellow()
+        } else {
+            format!("{} BPM", self.heart_rate).green()
+        };
+        output.push_str(&format!("\n  💓 Coding Pulse: {}\n", hr_color));
+
+        let status = if self.heart_rate > 100 {
+            "⚡ High intensity coding session!"
+        } else if self.heart_rate > 60 {
+            "🏃 Active development pace"
+        } else {
+            "🧘 Calm, focused coding"
+        };
+        output.push_str(&format!("  {}\n", status));
+
+        output
+    }
+}
+
+/// TreeMap - Hierarchical rectangles showing proportions
+/// Great for showing token usage breakdown by project/file
+pub struct TreeMap {
+    pub title: String,
+    pub items: Vec<(String, f64, String)>, // (name, value, color)
+}
+
+impl TreeMap {
+    pub fn new(title: &str) -> Self {
+        Self {
+            title: title.to_string(),
+            items: Vec::new(),
+        }
+    }
+
+    pub fn add(&mut self, name: &str, value: f64, color: &str) {
+        self.items.push((name.to_string(), value, color.to_string()));
+    }
+
+    pub fn render(&self) -> String {
+        let mut output = String::new();
+        output.push_str(&format!("  {}\n\n", self.title.bold()));
+
+        if self.items.is_empty() {
+            output.push_str("  No data\n");
+            return output;
+        }
+
+        let total: f64 = self.items.iter().map(|(_, v, _)| v).sum();
+        let width = 50;
+        let height = 12;
+        let total_cells = width * height;
+
+        // Sort by value descending
+        let mut sorted: Vec<_> = self.items.clone();
+        sorted.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+
+        // Create grid
+        let mut grid = vec![vec![(' ', "white".to_string()); width]; height];
+        let mut current_x = 0;
+        let mut current_y = 0;
+        let mut remaining_width = width;
+        let mut remaining_height = height;
+        let mut horizontal = true;
+
+        for (name, value, color) in &sorted {
+            let cells = ((value / total) * total_cells as f64) as usize;
+            if cells == 0 { continue; }
+
+            let (rect_w, rect_h) = if horizontal {
+                let w = remaining_width;
+                let h = (cells / w).max(1).min(remaining_height);
+                (w, h)
+            } else {
+                let h = remaining_height;
+                let w = (cells / h).max(1).min(remaining_width);
+                (w, h)
+            };
+
+            // Fill rectangle with first char of name
+            let fill_char = name.chars().next().unwrap_or('█');
+            for y in current_y..(current_y + rect_h).min(height) {
+                for x in current_x..(current_x + rect_w).min(width) {
+                    grid[y][x] = (fill_char, color.clone());
+                }
+            }
+
+            // Update position
+            if horizontal {
+                current_y += rect_h;
+                remaining_height = remaining_height.saturating_sub(rect_h);
+            } else {
+                current_x += rect_w;
+                remaining_width = remaining_width.saturating_sub(rect_w);
+            }
+            horizontal = !horizontal;
+        }
+
+        // Render grid with box
+        output.push_str(&format!("  ┌{}┐\n", "─".repeat(width)));
+        for row in &grid {
+            output.push_str("  │");
+            for (ch, color) in row {
+                output.push_str(&colorize_text(&ch.to_string(), color).to_string());
+            }
+            output.push_str("│\n");
+        }
+        output.push_str(&format!("  └{}┘\n\n", "─".repeat(width)));
+
+        // Legend
+        for (name, value, color) in &sorted {
+            let pct = value / total * 100.0;
+            let marker = colorize_text("██", color);
+            output.push_str(&format!("  {} {} ({:.1}%) - {}\n", marker, name, pct, format_number(*value)));
+        }
+
+        output
+    }
+}
+
+/// SankeyFlow - ASCII flow diagram showing transitions between states
+/// Shows flow of tokens/activity between tools, projects, or stages
+pub struct SankeyFlow {
+    pub title: String,
+    pub flows: Vec<(String, String, f64)>, // (from, to, amount)
+}
+
+impl SankeyFlow {
+    pub fn new(title: &str) -> Self {
+        Self {
+            title: title.to_string(),
+            flows: Vec::new(),
+        }
+    }
+
+    pub fn add_flow(&mut self, from: &str, to: &str, amount: f64) {
+        self.flows.push((from.to_string(), to.to_string(), amount));
+    }
+
+    pub fn render(&self) -> String {
+        let mut output = String::new();
+        output.push_str(&format!("  {}\n\n", self.title.bold()));
+
+        if self.flows.is_empty() {
+            output.push_str("  No flows\n");
+            return output;
+        }
+
+        // Get unique sources and targets
+        let mut sources: Vec<&str> = self.flows.iter().map(|(s, _, _)| s.as_str()).collect();
+        sources.sort();
+        sources.dedup();
+
+        let mut targets: Vec<&str> = self.flows.iter().map(|(_, t, _)| t.as_str()).collect();
+        targets.sort();
+        targets.dedup();
+
+        let max_flow: f64 = self.flows.iter().map(|(_, _, a)| *a).fold(0.0, f64::max);
+        let max_name = sources.iter().chain(targets.iter()).map(|s| s.len()).max().unwrap_or(10);
+
+        // Draw flows
+        for source in &sources {
+            let source_flows: Vec<_> = self.flows.iter()
+                .filter(|(s, _, _)| s == *source)
+                .collect();
+
+            let total: f64 = source_flows.iter().map(|(_, _, a)| *a).sum();
+            let bar_width = ((total / max_flow) * 20.0) as usize;
+
+            output.push_str(&format!("  {:>width$} ", source, width = max_name));
+            output.push_str(&"█".repeat(bar_width).cyan().to_string());
+            output.push_str(" ─");
+
+            for (i, (_, target, amount)) in source_flows.iter().enumerate() {
+                let flow_width = ((*amount / max_flow) * 15.0) as usize;
+                let flow_char = if i == 0 { "┬" } else { "├" };
+                output.push_str(&format!("{}{}─▶ {} ({})\n",
+                    flow_char,
+                    "─".repeat(flow_width),
+                    target.green(),
+                    format_number(*amount)
+                ));
+                if i < source_flows.len() - 1 {
+                    output.push_str(&format!("{:>width$}   │", "", width = max_name + bar_width));
+                }
+            }
+        }
+
+        output
+    }
+}
+
+/// AsciiWordCloud - ASCII art word cloud of common terms
+/// Sizes words based on frequency
+pub struct AsciiWordCloud {
+    pub title: String,
+    pub words: Vec<(String, u32)>, // (word, frequency)
+}
+
+impl AsciiWordCloud {
+    pub fn new(title: &str) -> Self {
+        Self {
+            title: title.to_string(),
+            words: Vec::new(),
+        }
+    }
+
+    pub fn add_word(&mut self, word: &str, frequency: u32) {
+        self.words.push((word.to_string(), frequency));
+    }
+
+    pub fn render(&self) -> String {
+        let mut output = String::new();
+        output.push_str(&format!("  {}\n\n", self.title.bold()));
+
+        if self.words.is_empty() {
+            output.push_str("  No words\n");
+            return output;
+        }
+
+        // Sort by frequency
+        let mut sorted = self.words.clone();
+        sorted.sort_by(|a, b| b.1.cmp(&a.1));
+
+        let max_freq = sorted[0].1 as f64;
+        let colors = ["red", "yellow", "green", "cyan", "blue", "magenta"];
+        let width = 60;
+
+        // Create word cloud layout
+        let mut lines: Vec<String> = Vec::new();
+        let mut current_line = String::from("  ");
+
+        for (i, (word, freq)) in sorted.iter().take(30).enumerate() {
+            let scale = (*freq as f64 / max_freq).sqrt();
+            let styled_word = if scale > 0.8 {
+                colorize_text(&word.to_uppercase(), colors[i % colors.len()]).bold().to_string()
+            } else if scale > 0.5 {
+                colorize_text(word, colors[i % colors.len()]).to_string()
+            } else {
+                word.dimmed().to_string()
+            };
+
+            let word_len = word.len() + 1;
+            if current_line.len() + word_len > width {
+                lines.push(current_line);
+                current_line = String::from("  ");
+            }
+            current_line.push_str(&styled_word);
+            current_line.push(' ');
+        }
+        if current_line.len() > 2 {
+            lines.push(current_line);
+        }
+
+        // Center the cloud
+        for line in &lines {
+            output.push_str(line);
+            output.push('\n');
+        }
+
+        output
+    }
+}
+
+/// BubbleMatrix - Grid of bubbles with varying sizes
+/// Shows multi-dimensional data (row, col, size, color)
+pub struct BubbleMatrix {
+    pub title: String,
+    pub row_labels: Vec<String>,
+    pub col_labels: Vec<String>,
+    pub values: Vec<Vec<f64>>, // [row][col]
+}
+
+impl BubbleMatrix {
+    pub fn new(title: &str) -> Self {
+        Self {
+            title: title.to_string(),
+            row_labels: Vec::new(),
+            col_labels: Vec::new(),
+            values: Vec::new(),
+        }
+    }
+
+    pub fn set_labels(&mut self, rows: Vec<&str>, cols: Vec<&str>) {
+        self.row_labels = rows.iter().map(|s| s.to_string()).collect();
+        self.col_labels = cols.iter().map(|s| s.to_string()).collect();
+        self.values = vec![vec![0.0; cols.len()]; rows.len()];
+    }
+
+    pub fn set_value(&mut self, row: usize, col: usize, value: f64) {
+        if row < self.values.len() && col < self.values[row].len() {
+            self.values[row][col] = value;
+        }
+    }
+
+    pub fn render(&self) -> String {
+        let mut output = String::new();
+        output.push_str(&format!("  {}\n\n", self.title.bold()));
+
+        if self.values.is_empty() {
+            output.push_str("  No data\n");
+            return output;
+        }
+
+        let max_val = self.values.iter()
+            .flat_map(|row| row.iter())
+            .cloned()
+            .fold(0.0_f64, f64::max)
+            .max(1.0);
+
+        let max_row_label = self.row_labels.iter().map(|s| s.len()).max().unwrap_or(5);
+        let bubbles = ["·", "∘", "○", "◎", "●", "◉"];
+
+        // Header
+        output.push_str(&format!("{:>width$}  ", "", width = max_row_label));
+        for col in &self.col_labels {
+            output.push_str(&format!("{:^5}", &col[..col.len().min(4)]));
+        }
+        output.push('\n');
+
+        // Rows with bubbles
+        for (row_idx, row_label) in self.row_labels.iter().enumerate() {
+            output.push_str(&format!("{:>width$}  ", row_label, width = max_row_label));
+            for col_idx in 0..self.col_labels.len() {
+                let val = self.values.get(row_idx).and_then(|r| r.get(col_idx)).unwrap_or(&0.0);
+                let normalized = val / max_val;
+                let bubble_idx = ((normalized * 5.0) as usize).min(5);
+                let bubble = bubbles[bubble_idx];
+
+                let colored = if normalized > 0.8 {
+                    bubble.red()
+                } else if normalized > 0.6 {
+                    bubble.yellow()
+                } else if normalized > 0.4 {
+                    bubble.green()
+                } else if normalized > 0.2 {
+                    bubble.cyan()
+                } else {
+                    bubble.dimmed()
+                };
+                output.push_str(&format!("  {}  ", colored));
+            }
+            output.push('\n');
+        }
+
+        // Legend
+        output.push_str(&format!("\n  Size: {} min  {} max\n", "·".dimmed(), "◉".red()));
+
+        output
+    }
+}
+
+/// PolarArea - Rose/coxcomb chart for cyclical data
+/// Great for showing activity by hour of day or day of week
+pub struct PolarArea {
+    pub title: String,
+    pub segments: Vec<(String, f64, String)>, // (label, value, color)
+}
+
+impl PolarArea {
+    pub fn new(title: &str) -> Self {
+        Self {
+            title: title.to_string(),
+            segments: Vec::new(),
+        }
+    }
+
+    pub fn add_segment(&mut self, label: &str, value: f64, color: &str) {
+        self.segments.push((label.to_string(), value, color.to_string()));
+    }
+
+    pub fn render(&self) -> String {
+        let mut output = String::new();
+        output.push_str(&format!("  {}\n\n", self.title.bold()));
+
+        if self.segments.is_empty() {
+            output.push_str("  No data\n");
+            return output;
+        }
+
+        let max_val = self.segments.iter().map(|(_, v, _)| *v).fold(0.0_f64, f64::max).max(1.0);
+        let radius = 8;
+
+        // ASCII polar plot with concentric circles
+        let size = radius * 2 + 3;
+        let center = radius + 1;
+        let mut grid = vec![vec![' '; size]; size];
+
+        // Draw concentric circles (guidelines)
+        for r in [radius / 3, radius * 2 / 3, radius] {
+            for angle in 0..360 {
+                let rad = (angle as f64).to_radians();
+                let x = (center as f64 + rad.cos() * r as f64) as usize;
+                let y = (center as f64 + rad.sin() * r as f64 * 0.5) as usize;
+                if x < size && y < size && grid[y][x] == ' ' {
+                    grid[y][x] = '·';
+                }
+            }
+        }
+
+        // Draw segments as radial bars
+        let segment_angle = 360.0 / self.segments.len() as f64;
+        for (i, (_, value, _)) in self.segments.iter().enumerate() {
+            let angle = (i as f64 * segment_angle + 90.0).to_radians();
+            let bar_len = ((value / max_val) * radius as f64) as usize;
+
+            for r in 1..=bar_len {
+                let x = (center as f64 + angle.cos() * r as f64) as usize;
+                let y = (center as f64 - angle.sin() * r as f64 * 0.5) as usize;
+                if x < size && y < size {
+                    grid[y][x] = '█';
+                }
+            }
+        }
+
+        // Center marker
+        grid[center][center] = '◉';
+
+        // Render grid
+        for row in &grid {
+            output.push_str("  ");
+            for ch in row {
+                let s = if *ch == '█' {
+                    ch.to_string().cyan().to_string()
+                } else if *ch == '◉' {
+                    ch.to_string().yellow().to_string()
+                } else {
+                    ch.to_string().dimmed().to_string()
+                };
+                output.push_str(&s);
+            }
+            output.push('\n');
+        }
+
+        // Legend
+        output.push('\n');
+        for (i, (label, value, color)) in self.segments.iter().enumerate() {
+            let marker = colorize_text("●", color);
+            output.push_str(&format!("  {} {} ({:.0})\n", marker, label, value));
+            if i >= 7 {
+                output.push_str(&format!("  ... and {} more\n", self.segments.len() - 8));
+                break;
+            }
+        }
+
+        output
+    }
+}
+
+/// TimelineStory - Narrative timeline with milestones and events
+/// Shows a story of your coding journey with key moments
+pub struct TimelineStory {
+    pub title: String,
+    pub events: Vec<(String, String, String, String)>, // (date, title, description, type)
+}
+
+impl TimelineStory {
+    pub fn new(title: &str) -> Self {
+        Self {
+            title: title.to_string(),
+            events: Vec::new(),
+        }
+    }
+
+    pub fn add_event(&mut self, date: &str, title: &str, description: &str, event_type: &str) {
+        self.events.push((
+            date.to_string(),
+            title.to_string(),
+            description.to_string(),
+            event_type.to_string(),
+        ));
+    }
+
+    pub fn render(&self) -> String {
+        let mut output = String::new();
+        output.push_str(&format!("  {}\n\n", self.title.bold()));
+
+        if self.events.is_empty() {
+            output.push_str("  No events\n");
+            return output;
+        }
+
+        for (i, (date, title, description, event_type)) in self.events.iter().enumerate() {
+            let icon = match event_type.as_str() {
+                "milestone" => "🏆",
+                "achievement" => "⭐",
+                "bug" => "🐛",
+                "feature" => "✨",
+                "refactor" => "🔧",
+                "learning" => "📚",
+                "breakthrough" => "💡",
+                _ => "📌",
+            };
+
+            let connector = if i == self.events.len() - 1 { "└" } else { "├" };
+            let line = if i == self.events.len() - 1 { " " } else { "│" };
+
+            output.push_str(&format!("  {} {} {}\n", date.dimmed(), icon, title.bold()));
+            output.push_str(&format!("  {}──┤\n", connector));
+
+            // Word wrap description
+            let words: Vec<&str> = description.split_whitespace().collect();
+            let mut current_line = String::new();
+            for word in words {
+                if current_line.len() + word.len() > 45 {
+                    output.push_str(&format!("  {}   {}\n", line, current_line));
+                    current_line = word.to_string();
+                } else {
+                    if !current_line.is_empty() { current_line.push(' '); }
+                    current_line.push_str(word);
+                }
+            }
+            if !current_line.is_empty() {
+                output.push_str(&format!("  {}   {}\n", line, current_line));
+            }
+            output.push_str(&format!("  {}\n", line));
+        }
+
+        output
+    }
+}
+
+/// HexGrid - Hexagonal grid heatmap (honeycomb pattern)
+/// Unique way to visualize 2D density data
+pub struct HexGrid {
+    pub title: String,
+    pub data: Vec<Vec<f64>>,
+    pub width: usize,
+    pub height: usize,
+}
+
+impl HexGrid {
+    pub fn new(title: &str, width: usize, height: usize) -> Self {
+        Self {
+            title: title.to_string(),
+            data: vec![vec![0.0; width]; height],
+            width,
+            height,
+        }
+    }
+
+    pub fn set_value(&mut self, x: usize, y: usize, value: f64) {
+        if y < self.height && x < self.width {
+            self.data[y][x] = value;
+        }
+    }
+
+    pub fn render(&self) -> String {
+        let mut output = String::new();
+        output.push_str(&format!("  {}\n\n", self.title.bold()));
+
+        let max_val = self.data.iter()
+            .flat_map(|row| row.iter())
+            .cloned()
+            .fold(0.0_f64, f64::max)
+            .max(1.0);
+
+        // Hex characters for different intensities
+        let hex_chars = ["⬡", "⬢"];
+
+        for (y, row) in self.data.iter().enumerate() {
+            // Offset odd rows for honeycomb effect
+            if y % 2 == 1 {
+                output.push_str(" ");
+            }
+            output.push_str("  ");
+
+            for &val in row {
+                let intensity = val / max_val;
+                let hex = if intensity > 0.1 { hex_chars[1] } else { hex_chars[0] };
+
+                let colored = if intensity > 0.8 {
+                    hex.red()
+                } else if intensity > 0.6 {
+                    hex.yellow()
+                } else if intensity > 0.4 {
+                    hex.green()
+                } else if intensity > 0.2 {
+                    hex.cyan()
+                } else if intensity > 0.1 {
+                    hex.blue()
+                } else {
+                    hex.dimmed()
+                };
+                output.push_str(&format!("{} ", colored));
+            }
+            output.push('\n');
+        }
+
+        output.push_str(&format!("\n  Intensity: {} low  {} high\n", "⬡".dimmed(), "⬢".red()));
+
+        output
+    }
+}
+
+/// FlowState - Visualization of focus/flow vs interruption patterns
+/// Shows when you were "in the zone" vs getting interrupted
+pub struct FlowState {
+    pub title: String,
+    pub periods: Vec<(String, f64, bool)>, // (time_label, duration_mins, was_flow)
+}
+
+impl FlowState {
+    pub fn new(title: &str) -> Self {
+        Self {
+            title: title.to_string(),
+            periods: Vec::new(),
+        }
+    }
+
+    pub fn add_period(&mut self, time_label: &str, duration_mins: f64, was_flow: bool) {
+        self.periods.push((time_label.to_string(), duration_mins, was_flow));
+    }
+
+    pub fn render(&self) -> String {
+        let mut output = String::new();
+        output.push_str(&format!("  {}\n\n", self.title.bold()));
+
+        if self.periods.is_empty() {
+            output.push_str("  No data\n");
+            return output;
+        }
+
+        let total_time: f64 = self.periods.iter().map(|(_, d, _)| d).sum();
+        let flow_time: f64 = self.periods.iter()
+            .filter(|(_, _, f)| *f)
+            .map(|(_, d, _)| d)
+            .sum();
+        let flow_pct = flow_time / total_time * 100.0;
+
+        // Flow vs Fragmented bar
+        output.push_str("  Flow State Timeline\n  ");
+        let bar_width = 50;
+        for (_, duration, was_flow) in &self.periods {
+            let width = ((duration / total_time) * bar_width as f64) as usize;
+            let char = if *was_flow { "█" } else { "░" };
+            let colored = if *was_flow {
+                char.green().to_string()
+            } else {
+                char.red().to_string()
+            };
+            output.push_str(&colored.repeat(width.max(1)));
+        }
+        output.push_str("\n\n");
+
+        // Summary stats
+        let flow_score = if flow_pct > 70.0 {
+            "Excellent! Deep work champion".green()
+        } else if flow_pct > 50.0 {
+            "Good flow state achieved".cyan()
+        } else if flow_pct > 30.0 {
+            "Moderate - try reducing interruptions".yellow()
+        } else {
+            "Fragmented - consider time blocking".red()
+        };
+
+        output.push_str(&format!("  {} Flow time:    {:.0} mins ({:.1}%)\n", "█".green(), flow_time, flow_pct));
+        output.push_str(&format!("  {} Interrupted:  {:.0} mins ({:.1}%)\n", "░".red(), total_time - flow_time, 100.0 - flow_pct));
+        output.push_str(&format!("\n  🎯 {}\n", flow_score));
+
+        // Flow periods breakdown
+        output.push_str("\n  Flow Sessions:\n");
+        let flow_sessions: Vec<_> = self.periods.iter()
+            .filter(|(_, _, f)| *f)
+            .collect();
+
+        let mut longest = 0.0_f64;
+        for (time, duration, _) in flow_sessions.iter().take(5) {
+            output.push_str(&format!("    {} - {:.0} mins of focus\n", time.cyan(), duration));
+            longest = longest.max(*duration);
+        }
+
+        if longest > 0.0 {
+            output.push_str(&format!("\n  🏆 Longest flow: {:.0} mins\n", longest));
+        }
+
+        output
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

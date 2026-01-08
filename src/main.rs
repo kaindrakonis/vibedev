@@ -2539,7 +2539,164 @@ async fn main() -> Result<()> {
             print!("{}", card2.render());
 
             println!("\n{}", "═══════════════════════════════════════════════════════════════".cyan());
-            println!("{}", "  26 visualization types available! Use in TUI: 'vibedev tui'".dimmed());
+            println!("{}", "  🧠 CREATIVE INSIGHT VISUALIZATIONS".magenta().bold());
+            println!("{}", "═══════════════════════════════════════════════════════════════".cyan());
+
+            // 27. Mood Ring
+            println!("\n{}", "━━━ Mood Ring ━━━".yellow().bold());
+            let mut mood = ascii_charts::MoodRing::new("Today's Coding Mood");
+            mood.set_scores(25.0, 85.0, 70.0, 75.0); // frustration, flow, energy, focus
+            print!("{}", mood.render());
+
+            // 28. Code Pulse (ECG)
+            println!("\n{}", "━━━ Code Pulse (ECG) ━━━".yellow().bold());
+            let mut pulse = ascii_charts::CodePulse::new("Coding Activity Rhythm");
+            pulse.set_data(vec![
+                0.2, 0.3, 0.8, 0.4, 0.2, 0.1, 0.3, 0.9, 0.5, 0.2,
+                0.1, 0.4, 0.7, 0.3, 0.2, 0.5, 0.95, 0.6, 0.3, 0.1,
+                0.2, 0.3, 0.6, 0.85, 0.4, 0.2, 0.1, 0.3, 0.7, 0.4,
+            ]);
+            print!("{}", pulse.render());
+
+            // 29. TreeMap
+            println!("\n{}", "━━━ TreeMap ━━━".yellow().bold());
+            let mut treemap = ascii_charts::TreeMap::new("Token Usage by Project");
+            treemap.add("vibedev", 12_500_000.0, "cyan");
+            treemap.add("opensvm-cli", 8_300_000.0, "green");
+            treemap.add("website", 4_200_000.0, "yellow");
+            treemap.add("scripts", 1_800_000.0, "magenta");
+            treemap.add("dotfiles", 500_000.0, "blue");
+            print!("{}", treemap.render());
+
+            // 30. Sankey Flow
+            println!("\n{}", "━━━ Sankey Flow ━━━".yellow().bold());
+            let mut sankey = ascii_charts::SankeyFlow::new("Token Flow: Tools to Projects");
+            sankey.add_flow("Claude", "vibedev", 8_000_000.0);
+            sankey.add_flow("Claude", "opensvm-cli", 5_000_000.0);
+            sankey.add_flow("Cursor", "vibedev", 4_500_000.0);
+            sankey.add_flow("Cursor", "website", 3_000_000.0);
+            sankey.add_flow("Cline", "scripts", 1_200_000.0);
+            print!("{}", sankey.render());
+
+            // 31. Word Cloud
+            println!("\n{}", "━━━ Word Cloud ━━━".yellow().bold());
+            let mut cloud = ascii_charts::AsciiWordCloud::new("Common Terms in Prompts");
+            cloud.add_word("refactor", 45);
+            cloud.add_word("implement", 42);
+            cloud.add_word("debug", 38);
+            cloud.add_word("fix", 35);
+            cloud.add_word("test", 32);
+            cloud.add_word("optimize", 28);
+            cloud.add_word("add", 25);
+            cloud.add_word("error", 22);
+            cloud.add_word("update", 20);
+            cloud.add_word("create", 18);
+            cloud.add_word("review", 15);
+            cloud.add_word("help", 12);
+            cloud.add_word("explain", 10);
+            cloud.add_word("convert", 8);
+            cloud.add_word("analyze", 6);
+            print!("{}", cloud.render());
+
+            // 32. Bubble Matrix
+            println!("\n{}", "━━━ Bubble Matrix ━━━".yellow().bold());
+            let mut bubbles = ascii_charts::BubbleMatrix::new("Tool Usage by Day of Week");
+            bubbles.set_labels(
+                vec!["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+                vec!["Claude", "Cursor", "Cline", "Copilot"],
+            );
+            bubbles.set_value(0, 0, 0.9);
+            bubbles.set_value(0, 1, 0.7);
+            bubbles.set_value(0, 2, 0.3);
+            bubbles.set_value(1, 0, 0.85);
+            bubbles.set_value(1, 1, 0.8);
+            bubbles.set_value(1, 2, 0.4);
+            bubbles.set_value(2, 0, 0.95);
+            bubbles.set_value(2, 1, 0.6);
+            bubbles.set_value(2, 2, 0.5);
+            bubbles.set_value(3, 0, 0.7);
+            bubbles.set_value(3, 1, 0.75);
+            bubbles.set_value(3, 2, 0.2);
+            bubbles.set_value(4, 0, 0.6);
+            bubbles.set_value(4, 1, 0.5);
+            bubbles.set_value(4, 2, 0.1);
+            bubbles.set_value(5, 0, 0.3);
+            bubbles.set_value(5, 1, 0.2);
+            bubbles.set_value(6, 0, 0.2);
+            bubbles.set_value(6, 1, 0.1);
+            print!("{}", bubbles.render());
+
+            // 33. Polar Area
+            println!("\n{}", "━━━ Polar Area ━━━".yellow().bold());
+            let mut polar = ascii_charts::PolarArea::new("Activity by Hour");
+            polar.add_segment("6AM", 10.0, "blue");
+            polar.add_segment("9AM", 45.0, "cyan");
+            polar.add_segment("12PM", 30.0, "green");
+            polar.add_segment("3PM", 55.0, "yellow");
+            polar.add_segment("6PM", 40.0, "magenta");
+            polar.add_segment("9PM", 25.0, "red");
+            print!("{}", polar.render());
+
+            // 34. Timeline Story
+            println!("\n{}", "━━━ Timeline Story ━━━".yellow().bold());
+            let mut story = ascii_charts::TimelineStory::new("Your Coding Journey");
+            story.add_event(
+                "Dec 15",
+                "Started vibedev",
+                "Began working on the AI log analyzer project. Initial commit with basic structure.",
+                "milestone"
+            );
+            story.add_event(
+                "Dec 22",
+                "First major bug",
+                "Discovered infinite loop in parser. Spent 3 hours debugging before finding the root cause.",
+                "bug"
+            );
+            story.add_event(
+                "Jan 02",
+                "ASCII charts added",
+                "Implemented 26 beautiful visualization types. Major feature addition!",
+                "feature"
+            );
+            story.add_event(
+                "Jan 08",
+                "Flow state achieved",
+                "4-hour deep work session. Highest productivity day so far.",
+                "achievement"
+            );
+            print!("{}", story.render());
+
+            // 35. Hex Grid
+            println!("\n{}", "━━━ Hex Grid (Honeycomb) ━━━".yellow().bold());
+            let mut hex = ascii_charts::HexGrid::new("Activity Density Map", 12, 6);
+            // Create a gradient pattern
+            for y in 0..6 {
+                for x in 0..12 {
+                    let val = ((x as f64 / 12.0) + (y as f64 / 6.0)) / 2.0;
+                    hex.set_value(x, y, val);
+                }
+            }
+            // Add some hot spots
+            hex.set_value(3, 2, 0.95);
+            hex.set_value(8, 3, 0.9);
+            hex.set_value(5, 4, 0.85);
+            print!("{}", hex.render());
+
+            // 36. Flow State
+            println!("\n{}", "━━━ Flow State ━━━".yellow().bold());
+            let mut flow = ascii_charts::FlowState::new("Today's Focus Analysis");
+            flow.add_period("9:00 AM", 45.0, true);
+            flow.add_period("9:45 AM", 15.0, false);
+            flow.add_period("10:00 AM", 90.0, true);
+            flow.add_period("11:30 AM", 30.0, false);
+            flow.add_period("12:00 PM", 60.0, false);
+            flow.add_period("1:00 PM", 120.0, true);
+            flow.add_period("3:00 PM", 20.0, false);
+            flow.add_period("3:20 PM", 80.0, true);
+            print!("{}", flow.render());
+
+            println!("\n{}", "═══════════════════════════════════════════════════════════════".cyan());
+            println!("{}", "  36 visualization types available! Use in TUI: 'vibedev tui'".dimmed());
             println!("{}", "═══════════════════════════════════════════════════════════════".cyan());
 
             Ok(())
