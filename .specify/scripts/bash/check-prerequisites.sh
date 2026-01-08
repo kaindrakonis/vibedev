@@ -78,8 +78,19 @@ done
 SCRIPT_DIR="$(CDPATH="" cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
-# Get feature paths and validate branch
-eval $(get_feature_paths)
+# Get feature paths and validate branch without using eval
+while IFS='=' read -r key value; do
+  # Skip empty lines
+  [ -z "$key" ] && continue
+
+  # Strip a single pair of surrounding single quotes from the value, if present
+  if [[ "$value" == \'*\' ]]; then
+    value=${value:1:-1}
+  fi
+
+  # Assign the value to the variable named by $key without evaluation
+  printf -v "$key" '%s' "$value"
+done < <(get_feature_paths)
 check_feature_branch "$CURRENT_BRANCH" "$HAS_GIT" || exit 1
 
 # If paths-only mode, output paths and exit (support JSON + paths-only combined)
