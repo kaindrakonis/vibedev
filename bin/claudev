@@ -1,11 +1,6 @@
 #!/usr/bin/env node
 
-/**
- * Wrapper script for claudev binary
- * Executes the native Rust binary with all passed arguments
- */
-
-const { spawn } = require('child_process');
+const { spawnSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -13,28 +8,10 @@ const os = require('os');
 const BINARY_NAME = 'claudev' + (os.platform() === 'win32' ? '.exe' : '');
 const binaryPath = path.join(__dirname, BINARY_NAME);
 
-// Check if binary exists
 if (!fs.existsSync(binaryPath)) {
-  console.error('Error: claudev binary not found at', binaryPath);
-  console.error('\nThe binary may not have been downloaded during installation.');
-  console.error('Try reinstalling: npm install -g claudev');
-  console.error('\nOr build from source:');
-  console.error('  git clone https://github.com/openSVM/claudev');
-  console.error('  cd claudev && cargo install --path .');
+  console.error('claudev: Binary not found. Run: npm install -g claudev');
   process.exit(1);
 }
 
-// Spawn the binary with all arguments passed through
-const child = spawn(binaryPath, process.argv.slice(2), {
-  stdio: 'inherit',
-  env: process.env,
-});
-
-child.on('error', (err) => {
-  console.error('Failed to execute claudev:', err.message);
-  process.exit(1);
-});
-
-child.on('close', (code) => {
-  process.exit(code || 0);
-});
+const result = spawnSync(binaryPath, process.argv.slice(2), { stdio: 'inherit' });
+process.exit(result.status ?? 1);

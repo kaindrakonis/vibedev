@@ -1,6 +1,6 @@
 [package]
 name = "claudev"
-version = "0.0.2"
+version = "0.0.3"
 edition = "2021"
 description = "Analyze AI coding assistant usage patterns, costs, and productivity"
 license = "MIT"
