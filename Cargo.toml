@@ -1,6 +1,6 @@
 [package]
 name = "vibedev"
-version = "0.4.0"
+version = "0.0.1"
 edition = "2021"
 description = "Analyze AI coding assistant usage patterns, costs, and productivity"
 license = "MIT"
@@ -39,6 +39,10 @@ regex = "1.10"
 chrono = { version = "0.4", features = ["serde"] }
 lazy_static = "1.5"
 dirs = "5.0"
+
+# Search indexing
+tantivy = "0.22"
+unicode-normalization = "0.1"
 
 # Git integration (removed - was unused)
 

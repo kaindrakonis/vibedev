@@ -44,6 +44,7 @@ mod timeline_png;
 mod tui;
 mod ultra_deep;
 mod ascii_charts;
+mod search;
 
 use analysis::Analyzer;
 use backup::BackupManager;
@@ -408,6 +409,9 @@ enum Commands {
         #[arg(long)]
         progress: bool,
     },
+
+    /// Search indexed logs with full-text and filters
+    Search(search::cli::SearchArgs),
 
     /// Demo beautiful ASCII charts (showcase all visualization types)
     DemoCharts,
@@ -2261,6 +2265,11 @@ async fn main() -> Result<()> {
                 "💡 Tip: Use --scan-all to analyze all repos in your home directory".dimmed()
             );
 
+            Ok(())
+        }
+
+        Commands::Search(args) => {
+            search::cli::handle_search(args)?;
             Ok(())
         }
 
