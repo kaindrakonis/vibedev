@@ -13,7 +13,8 @@ const { execFileSync } = require('child_process');
 
 const PACKAGE_VERSION = require('../package.json').version;
 const REPO = 'openSVM/vibedev';
-const BINARY_NAME = 'claudev';
+const BINARY_NAME = 'claudev';           // Name in GitHub releases
+const LOCAL_BINARY_NAME = 'claudev-bin'; // Local name to avoid fork bomb with wrapper
 const DOWNLOAD_TIMEOUT = 60000; // 60 seconds
 
 // Map Node.js platform/arch to Rust target triples
@@ -126,9 +127,10 @@ async function main() {
   }
 
   const binDir = path.join(__dirname, '..', 'bin');
-  const binaryPath = path.join(binDir, BINARY_NAME + getBinaryExtension());
+  const downloadedPath = path.join(binDir, BINARY_NAME + getBinaryExtension());
+  const localBinaryPath = path.join(binDir, LOCAL_BINARY_NAME + getBinaryExtension());
 
-  if (fs.existsSync(binaryPath)) {
+  if (fs.existsSync(localBinaryPath)) {
     console.log('claudev: Binary exists, skipping download');
     return;
   }
@@ -149,8 +151,13 @@ async function main() {
       extractTarGz(buffer, binDir);
     }
 
+    // Rename to local binary name to avoid fork bomb with wrapper script
+    if (fs.existsSync(downloadedPath)) {
+      fs.renameSync(downloadedPath, localBinaryPath);
+    }
+
     if (os.platform() !== 'win32') {
-      fs.chmodSync(binaryPath, 0o755);
+      fs.chmodSync(localBinaryPath, 0o755);
     }
 
     console.log('claudev: Installed successfully!');

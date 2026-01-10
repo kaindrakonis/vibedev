@@ -5,11 +5,22 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
-const BINARY_NAME = 'claudev' + (os.platform() === 'win32' ? '.exe' : '');
+// Binary has different name to avoid spawning this wrapper script
+const BINARY_NAME = 'claudev-bin' + (os.platform() === 'win32' ? '.exe' : '');
 const binaryPath = path.join(__dirname, BINARY_NAME);
 
+// Prevent fork bomb: check if binary exists AND is not this script
+const thisScript = __filename;
 if (!fs.existsSync(binaryPath)) {
-  console.error('claudev: Binary not found. Run: npm install -g claudev');
+  console.error('claudev: Binary not found at', binaryPath);
+  console.error('claudev: Run: npm install -g claudev (or cargo install claudev)');
+  process.exit(1);
+}
+
+// Extra safety: verify it's actually an executable, not a script
+const stats = fs.statSync(binaryPath);
+if (stats.size < 10000) {
+  console.error('claudev: Binary appears invalid (too small). Reinstall with: npm install -g claudev');
   process.exit(1);
 }
 
