@@ -28,6 +28,7 @@ rayon = "1.10"
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+base64 = "0.22"
 
 # File handling
 walkdir = "2.5"
@@ -82,6 +83,14 @@ zip = "0.6"
 # SQLite for Cursor database parsing (bundled = includes SQLite statically)
 rusqlite = { version = "0.32", features = ["bundled"] }
 
+# MITM Proxy for traffic monitoring
+rcgen = "0.12"
+hyper = { version = "1.0", features = ["server", "client", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio", "server-auto", "client-legacy"] }
+http-body-util = "0.1"
+tokio-rustls = "0.25"
+rustls-pemfile = "2.0"
+
 # Visualization
 plotters = "0.3"
 image = "0.25"
@@ -101,3 +110,7 @@ criterion = "0.5"
 [[bin]]
 name = "claudev"
 path = "src/main.rs"
+
+[[bin]]
+name = "unbundle"
+path = "src/unbundler_cli.rs"

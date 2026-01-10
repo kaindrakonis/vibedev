@@ -45,6 +45,9 @@ mod tui;
 mod ultra_deep;
 mod ascii_charts;
 mod search;
+mod traffic;
+mod proxy;
+mod tui_traffic;
 
 use analysis::Analyzer;
 use backup::BackupManager;
@@ -415,6 +418,45 @@ enum Commands {
 
     /// Demo beautiful ASCII charts (showcase all visualization types)
     DemoCharts,
+
+    /// Monitor Claude API traffic in real-time (MITM proxy + TUI)
+    Monitor {
+        /// Port to listen on
+        #[arg(short, long, default_value = "8080")]
+        port: u16,
+
+        /// Export traffic to JSONL file
+        #[arg(short, long)]
+        export: Option<PathBuf>,
+
+        /// Initialize CA certificate only (don't start proxy)
+        #[arg(long)]
+        init_ca: bool,
+
+        /// Show setup instructions
+        #[arg(long)]
+        setup: bool,
+    },
+
+    /// Patch Claude to route traffic through claudev monitor
+    Patch {
+        /// Path to Claude binary (auto-detected if not specified)
+        #[arg(short, long)]
+        claude_path: Option<PathBuf>,
+
+        /// Restore original Claude (remove wrapper or binary)
+        #[arg(long)]
+        restore: bool,
+
+        /// Show current patch status
+        #[arg(long)]
+        status: bool,
+
+        /// Binary patch: directly modify Claude binary to use localhost HTTP
+        /// (no TLS, sees plaintext traffic - most reliable method)
+        #[arg(long)]
+        binary: bool,
+    },
 }
 
 /// Load analysis data from a directory (JSON files, reports, datasets)
@@ -2822,6 +2864,213 @@ async fn main() -> Result<()> {
             println!("\n{}", "═══════════════════════════════════════════════════════════════".cyan());
             println!("{}", "  46 visualization types available! Use in TUI: 'vibedev tui'".dimmed());
             println!("{}", "═══════════════════════════════════════════════════════════════".cyan());
+
+            Ok(())
+        }
+
+        Commands::Monitor { port, export, init_ca, setup } => {
+            use proxy::{MitmProxy, ProxyConfig, ProxyEvent};
+            use traffic::TrafficLog;
+            use tokio::sync::mpsc;
+
+            if setup {
+                proxy::print_setup_instructions();
+                return Ok(());
+            }
+
+            let traffic_log = TrafficLog::new();
+            traffic_log.enable_file_logging()?;
+
+            let config = ProxyConfig {
+                listen_addr: format!("127.0.0.1:{}", port).parse()?,
+                ..Default::default()
+            };
+
+            let (event_tx, event_rx) = mpsc::unbounded_channel::<ProxyEvent>();
+            let mut proxy = MitmProxy::new(config, traffic_log.clone(), event_tx);
+
+            if init_ca {
+                proxy.init_ca()?;
+                println!("CA certificate initialized at: {:?}", proxy::get_ca_cert_path());
+                proxy::print_setup_instructions();
+                return Ok(());
+            }
+
+            // Initialize CA if not exists
+            proxy.init_ca()?;
+
+            println!("Starting Claude traffic monitor on port {}...", port);
+            println!("Logging to: {:?}", traffic_log.get_log_path());
+            println!("\nRun 'claudev patch' to automatically route Claude through this proxy.");
+            println!("Or manually: export HTTPS_PROXY=http://127.0.0.1:{}", port);
+
+            // Run proxy and TUI concurrently
+            let proxy_handle = tokio::spawn(async move {
+                proxy.run().await
+            });
+
+            // Run TUI
+            tui_traffic::run_traffic_monitor(traffic_log, event_rx).await?;
+
+            // Cleanup
+            proxy_handle.abort();
+
+            if let Some(export_path) = export {
+                // Export would be handled here
+                println!("Exported traffic to: {:?}", export_path);
+            }
+
+            Ok(())
+        }
+
+        Commands::Patch { claude_path, restore, status, binary } => {
+            use std::os::unix::fs::PermissionsExt;
+
+            // Find Claude binary
+            let claude_bin = claude_path.clone().unwrap_or_else(|| {
+                dirs::home_dir()
+                    .unwrap_or_else(|| PathBuf::from("."))
+                    .join(".local/bin/claude")
+            });
+
+            // Resolve symlink to actual binary
+            let real_binary = if claude_bin.is_symlink() {
+                std::fs::read_link(&claude_bin)?
+            } else {
+                claude_bin.clone()
+            };
+
+            let backup_path = real_binary.with_extension("backup");
+            let wrapper_path = claude_bin.with_extension("wrapper");
+
+            if status {
+                // Check binary patch status
+                if backup_path.exists() {
+                    println!("Status: BINARY PATCHED");
+                    println!("Patched binary: {:?}", real_binary);
+                    println!("Original backup: {:?}", backup_path);
+                } else if wrapper_path.exists() {
+                    println!("Status: WRAPPER PATCHED");
+                    println!("Wrapper: {:?}", claude_bin);
+                    println!("Original: {:?}", wrapper_path);
+                } else {
+                    println!("Status: UNPATCHED");
+                    println!("Binary: {:?}", real_binary);
+                }
+                return Ok(());
+            }
+
+            if restore {
+                // Restore binary patch first
+                if backup_path.exists() {
+                    std::fs::remove_file(&real_binary)?;
+                    std::fs::rename(&backup_path, &real_binary)?;
+                    println!("Restored original Claude binary from backup");
+                    return Ok(());
+                }
+                // Restore wrapper patch
+                if wrapper_path.exists() {
+                    std::fs::remove_file(&claude_bin)?;
+                    std::fs::rename(&wrapper_path, &claude_bin)?;
+                    println!("Restored original Claude symlink");
+                    return Ok(());
+                }
+                println!("No patch found to restore");
+                return Ok(());
+            }
+
+            if binary {
+                // Binary patch: replace API URL directly in the binary
+                const ORIGINAL_URL: &[u8] = b"https://api.anthropic.com";
+                const PATCHED_URL: &[u8] = b"http://127.0.0.1:1338/api";  // Same length: 26 chars
+
+                if !real_binary.exists() {
+                    anyhow::bail!("Claude binary not found at {:?}", real_binary);
+                }
+
+                // Read the binary
+                let mut binary_data = std::fs::read(&real_binary)?;
+                let original_len = binary_data.len();
+
+                // Count occurrences
+                let mut count = 0;
+                let mut pos = 0;
+                while let Some(idx) = binary_data[pos..].windows(ORIGINAL_URL.len())
+                    .position(|w| w == ORIGINAL_URL)
+                {
+                    count += 1;
+                    pos += idx + ORIGINAL_URL.len();
+                }
+
+                if count == 0 {
+                    if backup_path.exists() {
+                        println!("Binary already patched (backup exists)");
+                    } else {
+                        anyhow::bail!("Could not find API URL in binary - may already be patched or different version");
+                    }
+                    return Ok(());
+                }
+
+                println!("Found {} occurrences of API URL in binary", count);
+
+                // Backup original
+                if !backup_path.exists() {
+                    std::fs::copy(&real_binary, &backup_path)?;
+                    println!("Backed up original to {:?}", backup_path);
+                }
+
+                // Replace all occurrences
+                let mut patched = 0;
+                pos = 0;
+                while let Some(idx) = binary_data[pos..].windows(ORIGINAL_URL.len())
+                    .position(|w| w == ORIGINAL_URL)
+                {
+                    let abs_pos = pos + idx;
+                    binary_data[abs_pos..abs_pos + PATCHED_URL.len()].copy_from_slice(PATCHED_URL);
+                    patched += 1;
+                    pos = abs_pos + PATCHED_URL.len();
+                }
+
+                // Write patched binary
+                std::fs::write(&real_binary, &binary_data)?;
+                println!("Patched {} URL(s) in binary", patched);
+                println!("\nClaude will now send HTTP requests to localhost:1338");
+                println!("Run 'claudev monitor -p 1338' to see plaintext API traffic!");
+                println!("\nTo restore: claudev patch --restore");
+
+                return Ok(());
+            }
+
+            // Default: wrapper script approach
+            if !claude_bin.exists() {
+                anyhow::bail!("Claude binary not found at {:?}", claude_bin);
+            }
+
+            // Backup original symlink
+            if !wrapper_path.exists() && claude_bin.is_symlink() {
+                std::fs::rename(&claude_bin, &wrapper_path)?;
+            }
+
+            // Create wrapper script
+            let ca_path = proxy::get_ca_cert_path();
+            let wrapper_content = format!(r#"#!/bin/bash
+# Claude wrapper - routes through claudev monitor
+# Restore with: claudev patch --restore
+
+export HTTPS_PROXY=http://127.0.0.1:8080
+export HTTP_PROXY=http://127.0.0.1:8080
+export SSL_CERT_FILE={}
+export NODE_TLS_REJECT_UNAUTHORIZED=0
+
+exec {} "$@"
+"#, ca_path.display(), real_binary.display());
+
+            std::fs::write(&claude_bin, wrapper_content)?;
+            std::fs::set_permissions(&claude_bin, std::fs::Permissions::from_mode(0o755))?;
+
+            println!("Created wrapper script at {:?}", claude_bin);
+            println!("\nNow run 'claudev monitor' in another terminal, then use 'claude' as normal.");
+            println!("To restore: claudev patch --restore");
 
             Ok(())
         }
